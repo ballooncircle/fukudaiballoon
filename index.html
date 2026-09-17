@@ -660,77 +660,51 @@
       applyNotice([{ date: '', title: notice, content: '' }]);
     }
 
-    // ギャラリーをIndexedDBから読み込む
+    // ギャラリーをdata/gallery.jsonから読み込む
     const GALLERY_INITIAL = 12;
-    let _galleryMeta = [];
-    let _galleryDB   = null;
+    let _galleryAll = [];
 
-    async function galleryInit() {
-      try { _galleryMeta = JSON.parse(localStorage.getItem('fdb_gallery') || '[]'); }
-      catch { _galleryMeta = []; }
-      if (!_galleryMeta.length) return;
-
-      _galleryDB = await new Promise((resolve) => {
-        const req = indexedDB.open('fdb_images', 1);
-        req.onupgradeneeded = e =>
-          e.target.result.createObjectStore('photos', { autoIncrement: true });
-        req.onsuccess = e => resolve(e.target.result);
-        req.onerror   = () => resolve(null);
-      });
-
-      document.getElementById('gallery').style.display = 'block';
-      await galleryRenderSlice(0, Math.min(GALLERY_INITIAL, _galleryMeta.length));
-
-      if (_galleryMeta.length > GALLERY_INITIAL) {
-        const wrap = document.getElementById('gallery-more-wrap');
-        const btn  = document.getElementById('gallery-more-btn');
-        btn.textContent = `もっと見る（あと${_galleryMeta.length - GALLERY_INITIAL}枚）`;
-        wrap.style.display = 'block';
-      }
-    }
-
-    async function galleryRenderSlice(from, to) {
-      const grid = document.getElementById('gallery-grid');
-      const slice = _galleryMeta.slice(from, to);
-      const placeholder = slice.map((item, j) => {
+    function galleryRenderSlice(from, to) {
+      const grid  = document.getElementById('gallery-grid');
+      const slice = _galleryAll.slice(from, to);
+      grid.insertAdjacentHTML('beforeend', slice.map((item, j) => {
         const i = from + j;
+        const esc = s => (s || '').replace(/</g, '&lt;').replace(/"/g, '&quot;');
         return `
           <div class="gallery-cell fade-in" id="gcell-${i}">
-            <div style="width:100%;aspect-ratio:4/3;background:#f0d8bc;border-radius:4px"></div>
-            ${item.caption ? `<p class="gallery-caption">${item.caption.replace(/</g,'&lt;')}</p>` : ''}
+            <img src="${esc(item.url)}" alt="${esc(item.caption)}" loading="lazy" />
+            ${item.caption ? `<p class="gallery-caption">${esc(item.caption)}</p>` : ''}
           </div>`;
-      }).join('');
-      grid.insertAdjacentHTML('beforeend', placeholder);
-      slice.forEach(async (item, j) => {
-        const i = from + j;
-        if (!_galleryDB || item.id == null) return;
-        try {
-          const blob = await new Promise((res, rej) => {
-            const req = _galleryDB.transaction('photos','readonly')
-                                  .objectStore('photos').get(item.id);
-            req.onsuccess = e => res(e.target.result);
-            req.onerror   = e => rej(e.target.error);
-          });
-          if (!blob) return;
-          const url  = URL.createObjectURL(blob);
-          const cell = document.getElementById(`gcell-${i}`);
-          if (!cell) return;
-          const img  = new Image();
-          img.src    = url;
-          img.alt    = item.caption || '';
-          img.loading = 'lazy';
-          cell.querySelector('div').replaceWith(img);
-          fadeObserver.observe(cell);
-        } catch {}
+      }).join(''));
+      document.querySelectorAll('.gallery-cell.fade-in:not([data-observed])').forEach(el => {
+        el.dataset.observed = '1';
+        fadeObserver.observe(el);
       });
     }
 
-    async function galleryShowAll() {
+    function galleryShowAll() {
       document.getElementById('gallery-more-wrap').style.display = 'none';
-      await galleryRenderSlice(GALLERY_INITIAL, _galleryMeta.length);
+      galleryRenderSlice(GALLERY_INITIAL, _galleryAll.length);
     }
 
-    galleryInit();
+    (async function galleryInit() {
+      try {
+        const resp = await fetch('data/gallery.json?v=' + Date.now());
+        if (!resp.ok) return;
+        const data = await resp.json();
+        _galleryAll = data.images || [];
+      } catch { return; }
+      if (!_galleryAll.length) return;
+
+      document.getElementById('gallery').style.display = 'block';
+      galleryRenderSlice(0, Math.min(GALLERY_INITIAL, _galleryAll.length));
+
+      if (_galleryAll.length > GALLERY_INITIAL) {
+        const btn = document.getElementById('gallery-more-btn');
+        btn.textContent = `もっと見る（あと${_galleryAll.length - GALLERY_INITIAL}枚）`;
+        document.getElementById('gallery-more-wrap').style.display = 'block';
+      }
+    })();
   </script>
 </body>
 </html>

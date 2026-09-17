@@ -369,22 +369,22 @@
 
   <main class="admin-main">
 
-    <!-- GAS URL 設定 -->
+    <!-- GitHub設定 -->
     <div class="card">
       <div class="card-title">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
-        GAS Web App URL 設定
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+        GitHub Personal Access Token
         <span class="badge">必須</span>
       </div>
       <p class="card-desc">
-        Google Apps Script をデプロイして取得した URL を貼り付けてください。<br>
-        ここが未設定だと投稿できません。
+        写真をどの端末からも見られるようにGitHubに保存します。<br>
+        <a href="https://github.com/settings/tokens/new?description=FukudaiBalloon+Admin&scopes=public_repo" target="_blank" style="color:var(--primary)">こちら</a>でトークンを発行（scopeは <code style="background:#f0d8bc;padding:1px 5px;border-radius:3px">public_repo</code> にチェック）してください。
       </p>
       <div class="gas-row">
-        <input type="url" id="gas-url" placeholder="https://script.google.com/macros/s/..." />
-        <button class="btn-save" onclick="saveGasUrl()">保存</button>
+        <input type="password" id="gh-token" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off" />
+        <button class="btn-save" onclick="saveGhToken()">保存</button>
       </div>
-      <p class="gas-status" id="gas-status"></p>
+      <p class="gas-status" id="gh-status"></p>
     </div>
 
     <!-- お知らせ投稿 -->
@@ -393,7 +393,7 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
         お知らせ投稿
       </div>
-      <p class="card-desc">入力内容がスプレッドシートの「お知らせ」シートに追加されます。</p>
+      <p class="card-desc">サイトのお知らせバーに表示されます（このブラウザのみ有効）。</p>
       <form class="form-row" onsubmit="submitNotice(event)">
         <div class="form-group">
           <label>日付</label>
@@ -517,7 +517,10 @@
 <script>
   const PW      = 'fukudai2026';
   const SESSION = 'fdb_admin_session';
-  const GAS_KEY = 'fdb_gas_url';
+  const GH_TOKEN_KEY = 'fdb_gh_token';
+  const GH_REPO      = 'ballooncircle/fukudaiballoon';
+  const GH_BRANCH    = 'claude/zen-tesla-RG6w5';
+  const GH_API       = `https://api.github.com/repos/${GH_REPO}/contents`;
 
   // ── 起動時 ──────────────────────────────────────────────────────────────
   if (sessionStorage.getItem(SESSION) === '1') {
@@ -546,114 +549,95 @@
   function showAdmin() {
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('admin-screen').style.display = 'block';
-    loadGasUrl();
+    loadGhToken();
     renderAchList();
-    renderGalleryList(); // async - runs in background
+    renderGalleryList();
   }
 
-  // ── GAS URL ──────────────────────────────────────────────────────────────
-  function loadGasUrl() {
-    const url = localStorage.getItem(GAS_KEY) || '';
-    document.getElementById('gas-url').value = url;
-    updateGasStatus(url);
+  // ── GitHub設定 ───────────────────────────────────────────────────────────
+  function loadGhToken() {
+    const set = !!localStorage.getItem(GH_TOKEN_KEY);
+    document.getElementById('gh-token').value = set ? '●'.repeat(20) : '';
+    updateGhStatus(set);
   }
 
-  function saveGasUrl() {
-    const url = document.getElementById('gas-url').value.trim();
-    if (url) {
-      localStorage.setItem(GAS_KEY, url);
-      updateGasStatus(url);
-      showToast('GAS URL を保存しました', 'success');
-    } else {
-      showToast('URLを入力してください', 'error');
+  function saveGhToken() {
+    const val = document.getElementById('gh-token').value.trim();
+    if (!val || /^●+$/.test(val)) { showToast('トークンを入力してください', 'error'); return; }
+    localStorage.setItem(GH_TOKEN_KEY, val);
+    document.getElementById('gh-token').value = '●'.repeat(20);
+    updateGhStatus(true);
+    showToast('GitHub トークンを保存しました', 'success');
+  }
+
+  function updateGhStatus(set) {
+    const el = document.getElementById('gh-status');
+    el.textContent = set ? '✓ トークン設定済み' : '⚠ トークンが未設定です。写真アップロード前に設定してください。';
+    el.className   = 'gas-status ' + (set ? 'ok' : 'err');
+  }
+
+  // ── GitHub API ヘルパー ───────────────────────────────────────────────────
+  async function ghGet(path) {
+    const token = localStorage.getItem(GH_TOKEN_KEY);
+    const resp  = await fetch(`${GH_API}/${path}?ref=${GH_BRANCH}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.v3+json' }
+    });
+    if (!resp.ok) return null;
+    return resp.json();
+  }
+
+  async function ghPut(path, b64, message, sha) {
+    const token = localStorage.getItem(GH_TOKEN_KEY);
+    if (!token) throw new Error('GitHubトークンが未設定です');
+    const body = { message, content: b64, branch: GH_BRANCH };
+    if (sha) body.sha = sha;
+    const resp = await fetch(`${GH_API}/${path}`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+    if (!resp.ok) {
+      const e = await resp.json().catch(() => ({}));
+      throw new Error(e.message || `GitHub API error ${resp.status}`);
     }
+    return resp.json();
   }
 
-  function updateGasStatus(url) {
-    const el = document.getElementById('gas-status');
-    if (url) {
-      el.textContent = '✓ URL設定済み';
-      el.className   = 'gas-status ok';
-    } else {
-      el.textContent = '⚠ URLが未設定です。投稿する前に設定してください。';
-      el.className   = 'gas-status err';
-    }
-  }
-
-  // ── お知らせ投稿 ─────────────────────────────────────────────────────────
-  async function submitNotice(e) {
-    e.preventDefault();
-    const btn = document.getElementById('btn-notice');
-    setLoading(btn, true);
+  async function readGalleryJson() {
+    const data = await ghGet('data/gallery.json');
+    if (!data) return { images: [], sha: null };
     try {
-      const result = await postToGas({
-        action:  'add_notice',
-        date:    document.getElementById('notice-date').value,
-        title:   document.getElementById('notice-title').value.trim(),
-        content: document.getElementById('notice-content').value.trim()
-      });
-      if (result.status === 'ok') {
-        showToast('お知らせを投稿しました！', 'success');
-        document.getElementById('notice-title').value   = '';
-        document.getElementById('notice-content').value = '';
-        document.getElementById('notice-date').value    = '';
-      } else {
-        showToast('エラー: ' + result.message, 'error');
-      }
-    } catch (err) {
-      showToast('通信エラー: ' + err.message, 'error');
-    } finally {
-      setLoading(btn, false);
-    }
+      const obj = JSON.parse(atob(data.content.replace(/\s/g, '')));
+      return { images: obj.images || [], sha: data.sha };
+    } catch { return { images: [], sha: data.sha }; }
   }
 
-  // ── IndexedDB ────────────────────────────────────────────────────────────
-  const IDB_NAME  = 'fdb_images';
-  const IDB_VER   = 1;
-  const IDB_STORE = 'photos';
-
-  function openDB() {
-    return new Promise((resolve, reject) => {
-      const req = indexedDB.open(IDB_NAME, IDB_VER);
-      req.onupgradeneeded = e =>
-        e.target.result.createObjectStore(IDB_STORE, { autoIncrement: true });
-      req.onsuccess = e => resolve(e.target.result);
-      req.onerror   = e => reject(e.target.error);
-    });
+  async function writeGalleryJson(images, sha) {
+    const b64 = btoa(unescape(encodeURIComponent(JSON.stringify({ images }, null, 2))));
+    await ghPut('data/gallery.json', b64, 'update: ギャラリー更新', sha);
   }
 
-  async function saveBlob(blob) {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const req = db.transaction(IDB_STORE, 'readwrite')
-                    .objectStore(IDB_STORE).add(blob);
-      req.onsuccess = e => resolve(e.target.result);
-      req.onerror   = e => reject(e.target.error);
-    });
+  // ── お知らせ投稿（localStorage）─────────────────────────────────────────
+  function submitNotice(e) {
+    e.preventDefault();
+    const date    = document.getElementById('notice-date').value;
+    const title   = document.getElementById('notice-title').value.trim();
+    const content = document.getElementById('notice-content').value.trim();
+    if (!title) return;
+    const text = [date ? `【${date}】` : '', title, content ? `　${content}` : ''].join('');
+    localStorage.setItem('fdb_notice', text);
+    document.getElementById('notice-title').value   = '';
+    document.getElementById('notice-content').value = '';
+    document.getElementById('notice-date').value    = '';
+    showToast('お知らせを保存しました！', 'success');
   }
 
-  async function loadBlob(id) {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const req = db.transaction(IDB_STORE, 'readonly')
-                    .objectStore(IDB_STORE).get(id);
-      req.onsuccess = e => resolve(e.target.result);
-      req.onerror   = e => reject(e.target.error);
-    });
-  }
-
-  async function deleteBlob(id) {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const req = db.transaction(IDB_STORE, 'readwrite')
-                    .objectStore(IDB_STORE).delete(id);
-      req.onsuccess = () => resolve();
-      req.onerror   = e => reject(e.target.error);
-    });
-  }
-
-  // ── 画像圧縮ユーティリティ ───────────────────────────────────────────────
-  function compressToBlob(file) {
+  // ── 画像圧縮（base64 for GitHub API）────────────────────────────────────
+  function compressToBase64(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = e => {
@@ -665,8 +649,7 @@
           const canvas = document.createElement('canvas');
           canvas.width = w; canvas.height = h;
           canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-          canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('compress failed')),
-                        'image/jpeg', 0.82);
+          resolve(canvas.toDataURL('image/jpeg', 0.82).split(',')[1]);
         };
         img.onerror = reject;
         img.src = e.target.result;
@@ -676,102 +659,95 @@
     });
   }
 
-  // ── ギャラリー（メタ：localStorage ／ 画像：IndexedDB）──────────────────
-  const GAL_KEY = 'fdb_gallery';
-
-  function loadGalleryMeta() {
-    try { return JSON.parse(localStorage.getItem(GAL_KEY) || '[]'); }
-    catch { return []; }
+  async function uploadImageFile(file) {
+    const b64  = await compressToBase64(file);
+    const safe = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+    const path = `images/gallery/${Date.now()}_${safe}`;
+    await ghPut(path, b64, `add: ギャラリー写真 ${safe}`);
+    return path;
   }
 
-  function saveGalleryMeta(items) {
-    localStorage.setItem(GAL_KEY, JSON.stringify(items));
-  }
-
+  // ── ギャラリー（GitHub上の data/gallery.json を読み書き）─────────────
   async function submitGallery(e) {
     e.preventDefault();
     const btn     = document.getElementById('btn-gallery');
     const files   = Array.from(document.getElementById('gallery-file').files);
     const caption = document.getElementById('gallery-caption').value.trim();
     if (!files.length) return;
+    if (!localStorage.getItem(GH_TOKEN_KEY)) {
+      showToast('GitHubトークンを先に設定してください', 'error'); return;
+    }
     setLoading(btn, true);
     try {
-      for (const file of files) {
-        const blob = await compressToBlob(file);
-        const id   = await saveBlob(blob);
-        const meta = loadGalleryMeta();
-        meta.push({ id, caption });
-        saveGalleryMeta(meta);
+      const paths = [];
+      for (const f of files) {
+        const p = await uploadImageFile(f);
+        paths.push(p);
       }
+      const { images, sha } = await readGalleryJson();
+      const newEntries = paths.map(url => ({ url, caption }));
+      await writeGalleryJson([...images, ...newEntries], sha);
       document.getElementById('gallery-file').value    = '';
       document.getElementById('gallery-caption').value = '';
       document.getElementById('gallery-preview-wrap').innerHTML = '';
-      showToast(`ギャラリーに${files.length}枚追加しました！`, 'success');
+      showToast(`${files.length}枚アップロードしました！（数秒で反映）`, 'success');
       renderGalleryList();
-    } catch {
-      showToast('画像の処理に失敗しました', 'error');
+    } catch (err) {
+      showToast('エラー: ' + err.message, 'error');
     } finally {
       setLoading(btn, false);
     }
   }
 
   async function addToGallery(file, caption) {
-    const blob = await compressToBlob(file);
-    const id   = await saveBlob(blob);
-    const meta = loadGalleryMeta();
-    meta.push({ id, caption: caption || '' });
-    saveGalleryMeta(meta);
-    renderGalleryList();
+    if (!localStorage.getItem(GH_TOKEN_KEY)) return;
+    const path = await uploadImageFile(file);
+    const { images, sha } = await readGalleryJson();
+    images.push({ url: path, caption: caption || '' });
+    await writeGalleryJson(images, sha);
   }
 
   async function deleteGallery(index) {
-    const meta = loadGalleryMeta();
-    const item = meta[index];
-    if (item && item.id != null) {
-      await deleteBlob(item.id).catch(() => {});
+    try {
+      const { images, sha } = await readGalleryJson();
+      images.splice(index, 1);
+      await writeGalleryJson(images, sha);
+      renderGalleryList();
+      showToast('削除しました', '');
+    } catch (err) {
+      showToast('エラー: ' + err.message, 'error');
     }
-    meta.splice(index, 1);
-    saveGalleryMeta(meta);
-    renderGalleryList();
-    showToast('削除しました', '');
   }
 
   async function renderGalleryList() {
-    const meta = loadGalleryMeta();
-    const el   = document.getElementById('gallery-list');
-    if (!meta.length) {
-      el.innerHTML = '<p style="font-size:13px;color:var(--muted);padding:8px 0">まだ写真がありません</p>';
-      return;
-    }
-    el.innerHTML = meta.map((item, i) => `
-      <div id="grow-${i}" style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
-        <div style="width:60px;height:42px;background:var(--border);border-radius:6px;flex-shrink:0"></div>
-        <div style="flex:1;min-width:0">
-          ${item.caption
-            ? `<div style="font-size:13px;color:var(--text)">${item.caption}</div>`
-            : `<div style="font-size:12px;color:var(--muted)">キャプションなし</div>`}
+    const el = document.getElementById('gallery-list');
+    el.innerHTML = '<p style="font-size:13px;color:var(--muted);padding:8px 0">読み込み中...</p>';
+    try {
+      const { images } = await readGalleryJson();
+      if (!images.length) {
+        el.innerHTML = '<p style="font-size:13px;color:var(--muted);padding:8px 0">まだ写真がありません</p>';
+        return;
+      }
+      el.innerHTML = images.map((item, i) => `
+        <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
+          <img src="${item.url}" alt=""
+               style="width:60px;height:42px;object-fit:cover;border-radius:6px;border:1px solid var(--border);flex-shrink:0"
+               onerror="this.style.opacity='0.3'" />
+          <div style="flex:1;min-width:0">
+            ${item.caption
+              ? `<div style="font-size:13px;color:var(--text)">${item.caption}</div>`
+              : `<div style="font-size:12px;color:var(--muted)">キャプションなし</div>`}
+            <div style="font-size:11px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${item.url}</div>
+          </div>
+          <button onclick="deleteGallery(${i})"
+            style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:11px;color:var(--muted);cursor:pointer;white-space:nowrap;flex-shrink:0">
+            削除
+          </button>
         </div>
-        <button onclick="deleteGallery(${i})"
-          style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:11px;color:var(--muted);cursor:pointer;white-space:nowrap;flex-shrink:0">
-          削除
-        </button>
-      </div>
-    `).join('');
-
-    meta.forEach(async (item, i) => {
-      if (item.id == null) return;
-      try {
-        const blob = await loadBlob(item.id);
-        if (!blob) return;
-        const url = URL.createObjectURL(blob);
-        const row = document.getElementById(`grow-${i}`);
-        if (!row) return;
-        const img = document.createElement('img');
-        img.src = url;
-        img.style.cssText = 'width:60px;height:42px;object-fit:cover;border-radius:6px;border:1px solid var(--border);flex-shrink:0';
-        row.querySelector('div').replaceWith(img);
-      } catch {}
-    });
+      `).join('');
+    } catch {
+      el.innerHTML = '<p style="font-size:13px;color:var(--muted);padding:8px 0">（トークン未設定）</p>';
+    }
   }
 
   function previewGalleryFiles(input) {
@@ -874,8 +850,8 @@
         ? `活動実績を追加しました！（写真${photoFiles.length}枚をギャラリーに追加）`
         : '活動実績を追加しました！';
       showToast(msg, 'success');
-    } catch {
-      showToast('画像の処理に失敗しました', 'error');
+    } catch (err) {
+      showToast('エラー: ' + err.message, 'error');
     } finally {
       setLoading(btn, false);
     }
