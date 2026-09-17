@@ -476,6 +476,10 @@
           <label>詳細（省略可）</label>
           <textarea id="ach-desc" placeholder="詳細な内容"></textarea>
         </div>
+        <div class="form-group">
+          <label>リンク（省略可）</label>
+          <input type="url" id="ach-link" placeholder="https://..." />
+        </div>
         <div>
           <button type="submit" class="btn-submit">
             <span class="btn-label">追加する</span>
@@ -671,16 +675,18 @@
       date:     document.getElementById('ach-date').value.trim(),
       category: document.getElementById('ach-category').value,
       title:    document.getElementById('ach-title').value.trim(),
-      desc:     document.getElementById('ach-desc').value.trim()
+      desc:     document.getElementById('ach-desc').value.trim(),
+      link:     document.getElementById('ach-link').value.trim()
     };
     if (!item.title) return;
     const items = loadAchievements();
-    items.unshift(item);
+    items.push(item);
     saveAchievements(items);
     renderAchList();
     document.getElementById('ach-date').value  = '';
     document.getElementById('ach-title').value = '';
     document.getElementById('ach-desc').value  = '';
+    document.getElementById('ach-link').value  = '';
     showToast('活動実績を追加しました！', 'success');
   }
 

@@ -816,6 +816,18 @@ a   { color: inherit; text-decoration: none; }
   line-height: 1.7;
 }
 
+.ach-link {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--primary);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(232,132,42,0.4);
+  transition: border-color 0.2s;
+}
+.ach-link:hover { border-color: var(--primary); }
+
 @media (max-width: 600px) {
   .ach-card { flex-direction: column; gap: 8px; }
   .ach-date { min-width: auto; }
