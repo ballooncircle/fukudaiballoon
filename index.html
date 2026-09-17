@@ -79,6 +79,7 @@
         <li><a href="#activities">Activities</a></li>
         <li><a href="#balloon">Our Balloon</a></li>
         <li><a href="#sponsor">Sponsor</a></li>
+        <li><a href="#achievements">実績</a></li>
         <li><a href="#contact">Contact</a></li>
       </ul>
     </div>
@@ -483,6 +484,18 @@
 
   </section>
 
+  <!-- Achievements Section -->
+  <section class="achievements" id="achievements" style="display:none">
+    <div class="container">
+      <div class="section-header fade-in">
+        <p class="section-label">Achievements</p>
+        <h2 class="section-title">活動実績</h2>
+        <div class="gold-line"></div>
+      </div>
+      <div class="achievements-list fade-in" id="achievements-list"></div>
+    </div>
+  </section>
+
   <!-- SNS Section -->
   <section class="sns" id="sns">
     <div class="container">
@@ -588,6 +601,31 @@
         </div>
       `).join('');
     }
+
+    // 活動実績を localStorage から読み込む
+    (function () {
+      let items;
+      try { items = JSON.parse(localStorage.getItem('fdb_achievements') || '[]'); }
+      catch { items = []; }
+      if (!items.length) return;
+      const section = document.getElementById('achievements');
+      const list    = document.getElementById('achievements-list');
+      section.style.display = 'block';
+      const CATEGORY_COLOR = { '大会': '#e8842a', 'フライト': '#2d9cdb', '活動': '#27ae60', 'その他': '#8a6a50' };
+      list.innerHTML = items.map(item => {
+        const color = CATEGORY_COLOR[item.category] || '#8a6a50';
+        return `
+          <div class="ach-card fade-in">
+            <div class="ach-date">${(item.date || '').replace(/</g,'&lt;')}</div>
+            <div class="ach-body">
+              ${item.category ? `<span class="ach-badge" style="background:${color}">${item.category.replace(/</g,'&lt;')}</span>` : ''}
+              <div class="ach-title">${(item.title || '').replace(/</g,'&lt;')}</div>
+              ${item.desc ? `<div class="ach-desc">${item.desc.replace(/</g,'&lt;').replace(/\n/g,'<br>')}</div>` : ''}
+            </div>
+          </div>`;
+      }).join('');
+      document.querySelectorAll('.ach-card.fade-in').forEach(el => fadeObserver.observe(el));
+    })();
 
     // Primary: data/content.json (updated by GitHub Actions from Google Sheets)
     fetch('data/content.json?v=' + Date.now())

@@ -443,6 +443,53 @@
       </form>
     </div>
 
+    <!-- 活動実績 -->
+    <div class="card">
+      <div class="card-title">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        活動実績
+      </div>
+      <p class="card-desc">追加した実績はサイトの「活動実績」セクションに表示されます。</p>
+
+      <!-- 追加フォーム -->
+      <form class="form-row" onsubmit="submitAchievement(event)" style="margin-bottom:28px">
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <div class="form-group" style="flex:1;min-width:120px">
+            <label>日付</label>
+            <input type="text" id="ach-date" placeholder="例：2025年11月" />
+          </div>
+          <div class="form-group" style="flex:1;min-width:120px">
+            <label>カテゴリ</label>
+            <select id="ach-category" style="padding:11px 14px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:var(--sans);color:var(--text);background:var(--bg);outline:none">
+              <option value="大会">大会</option>
+              <option value="フライト">フライト</option>
+              <option value="活動">活動</option>
+              <option value="その他">その他</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>タイトル <span class="req">*</span></label>
+          <input type="text" id="ach-title" placeholder="例：佐賀インターナショナルバルーンフェスタ 見学参加" required />
+        </div>
+        <div class="form-group">
+          <label>詳細（省略可）</label>
+          <textarea id="ach-desc" placeholder="詳細な内容"></textarea>
+        </div>
+        <div>
+          <button type="submit" class="btn-submit">
+            <span class="btn-label">追加する</span>
+          </button>
+        </div>
+      </form>
+
+      <!-- 登録済みリスト -->
+      <div id="ach-list-wrap">
+        <p style="font-size:12px;font-weight:500;color:var(--muted);margin-bottom:10px;letter-spacing:0.05em">登録済み実績</p>
+        <div id="ach-list"></div>
+      </div>
+    </div>
+
   </main>
 </div>
 
@@ -482,6 +529,7 @@
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('admin-screen').style.display = 'block';
     loadGasUrl();
+    renderAchList();
   }
 
   // ── GAS URL ──────────────────────────────────────────────────────────────
@@ -582,6 +630,68 @@
   }
 
   // ── 画像プレビュー ───────────────────────────────────────────────────────
+  // ── 活動実績 ─────────────────────────────────────────────────────────────
+  const ACH_KEY = 'fdb_achievements';
+
+  function loadAchievements() {
+    try { return JSON.parse(localStorage.getItem(ACH_KEY) || '[]'); }
+    catch { return []; }
+  }
+
+  function saveAchievements(items) {
+    localStorage.setItem(ACH_KEY, JSON.stringify(items));
+  }
+
+  function renderAchList() {
+    const items = loadAchievements();
+    const el    = document.getElementById('ach-list');
+    if (!items.length) {
+      el.innerHTML = '<p style="font-size:13px;color:var(--muted);padding:8px 0">まだ実績がありません</p>';
+      return;
+    }
+    el.innerHTML = items.map((item, i) => `
+      <div style="display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)">
+        <div style="flex:1">
+          <span style="font-size:11px;color:var(--muted)">${item.date || ''}　</span>
+          <span style="font-size:11px;background:var(--primary);color:#fff;padding:1px 8px;border-radius:12px">${item.category || ''}</span>
+          <div style="font-size:13px;font-weight:500;color:var(--text);margin-top:4px">${item.title || ''}</div>
+          ${item.desc ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${item.desc.replace(/\n/g,'<br>')}</div>` : ''}
+        </div>
+        <button onclick="deleteAchievement(${i})"
+          style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:11px;color:var(--muted);cursor:pointer;white-space:nowrap;flex-shrink:0">
+          削除
+        </button>
+      </div>
+    `).join('');
+  }
+
+  function submitAchievement(e) {
+    e.preventDefault();
+    const item = {
+      date:     document.getElementById('ach-date').value.trim(),
+      category: document.getElementById('ach-category').value,
+      title:    document.getElementById('ach-title').value.trim(),
+      desc:     document.getElementById('ach-desc').value.trim()
+    };
+    if (!item.title) return;
+    const items = loadAchievements();
+    items.unshift(item);
+    saveAchievements(items);
+    renderAchList();
+    document.getElementById('ach-date').value  = '';
+    document.getElementById('ach-title').value = '';
+    document.getElementById('ach-desc').value  = '';
+    showToast('活動実績を追加しました！', 'success');
+  }
+
+  function deleteAchievement(index) {
+    const items = loadAchievements();
+    items.splice(index, 1);
+    saveAchievements(items);
+    renderAchList();
+    showToast('削除しました', '');
+  }
+
   function previewImage(url) {
     const img = document.getElementById('preview-img');
     if (url && url.startsWith('http')) {
