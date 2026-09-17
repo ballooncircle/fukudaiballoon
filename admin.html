@@ -422,12 +422,12 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
         バルーンギャラリー
       </div>
-      <p class="card-desc">写真のURLを入力するとギャラリーに追加されます。活動実績に写真を添付した場合は自動的にここにも追加されます。</p>
+      <p class="card-desc">写真をアップロードするとギャラリーに追加されます。活動実績に写真を添付した場合は自動的にここにも追加されます。</p>
       <form class="form-row" onsubmit="submitGallery(event)" style="margin-bottom:28px">
         <div class="form-group">
-          <label>画像 URL <span class="req">*</span></label>
-          <input type="url" id="gallery-url" placeholder="https://..." required
-                 oninput="previewGalleryImage(this.value)" />
+          <label>写真ファイル <span class="req">*</span></label>
+          <input type="file" id="gallery-file" accept="image/*" required
+                 onchange="previewGalleryFile(this)" style="padding:8px 14px;cursor:pointer" />
         </div>
         <img id="preview-img" class="preview-img" alt="プレビュー" />
         <div class="form-group">
@@ -435,7 +435,8 @@
           <input type="text" id="gallery-caption" placeholder="例：2025年佐賀バルーンフェスタ" />
         </div>
         <div>
-          <button type="submit" class="btn-submit">
+          <button type="submit" class="btn-submit" id="btn-gallery">
+            <div class="spinner"></div>
             <span class="btn-label">追加する</span>
           </button>
         </div>
@@ -482,18 +483,19 @@
           <textarea id="ach-desc" placeholder="詳細な内容"></textarea>
         </div>
         <div class="form-group">
-          <label>写真 URL（省略可）</label>
-          <input type="url" id="ach-photo" placeholder="https://..."
-                 oninput="previewAchPhoto(this.value)" />
+          <label>写真ファイル（省略可）</label>
+          <input type="file" id="ach-photo" accept="image/*"
+                 onchange="previewAchFile(this)" style="padding:8px 14px;cursor:pointer" />
           <img id="ach-preview-img" class="preview-img" alt="プレビュー" style="margin-top:6px" />
-          <p style="font-size:11px;color:var(--muted);margin-top:4px">入力するとギャラリーにも自動追加されます</p>
+          <p style="font-size:11px;color:var(--muted);margin-top:4px">アップロードするとギャラリーにも自動追加されます</p>
         </div>
         <div class="form-group">
           <label>リンク（省略可）</label>
           <input type="url" id="ach-link" placeholder="https://..." />
         </div>
         <div>
-          <button type="submit" class="btn-submit">
+          <button type="submit" class="btn-submit" id="btn-ach">
+            <div class="spinner"></div>
             <span class="btn-label">追加する</span>
           </button>
         </div>
@@ -605,6 +607,29 @@
     }
   }
 
+  // ── 画像圧縮ユーティリティ ───────────────────────────────────────────────
+  function compressImage(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = e => {
+        const img = new Image();
+        img.onload = () => {
+          const MAX = 1200;
+          let w = img.width, h = img.height;
+          if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', 0.82));
+        };
+        img.onerror = reject;
+        img.src = e.target.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
   // ── ギャラリー（localStorage）───────────────────────────────────────────
   const GAL_KEY = 'fdb_gallery';
 
@@ -614,24 +639,38 @@
   }
 
   function saveGallery(items) {
-    localStorage.setItem(GAL_KEY, JSON.stringify(items));
+    try {
+      localStorage.setItem(GAL_KEY, JSON.stringify(items));
+    } catch {
+      showToast('保存容量が不足しています。古い写真を削除してください。', 'error');
+      throw new Error('storage full');
+    }
   }
 
-  function submitGallery(e) {
+  async function submitGallery(e) {
     e.preventDefault();
-    const url     = document.getElementById('gallery-url').value.trim();
+    const btn     = document.getElementById('btn-gallery');
+    const file    = document.getElementById('gallery-file').files[0];
     const caption = document.getElementById('gallery-caption').value.trim();
-    if (!url) return;
-    addToGallery(url, caption);
-    document.getElementById('gallery-url').value     = '';
-    document.getElementById('gallery-caption').value = '';
-    document.getElementById('preview-img').style.display = 'none';
-    showToast('ギャラリーに追加しました！', 'success');
+    if (!file) return;
+    setLoading(btn, true);
+    try {
+      const dataUrl = await compressImage(file);
+      addToGallery(dataUrl, caption);
+      document.getElementById('gallery-file').value   = '';
+      document.getElementById('gallery-caption').value = '';
+      document.getElementById('preview-img').style.display = 'none';
+      showToast('ギャラリーに追加しました！', 'success');
+    } catch (err) {
+      if (err.message !== 'storage full') showToast('画像の処理に失敗しました', 'error');
+    } finally {
+      setLoading(btn, false);
+    }
   }
 
-  function addToGallery(url, caption) {
+  function addToGallery(dataUrl, caption) {
     const items = loadGallery();
-    items.push({ url, caption: caption || '' });
+    items.push({ url: dataUrl, caption: caption || '' });
     saveGallery(items);
     renderGalleryList();
   }
@@ -653,12 +692,12 @@
     }
     el.innerHTML = items.map((item, i) => `
       <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
-        <img src="${item.url.replace(/"/g,'')}" alt=""
-             style="width:60px;height:42px;object-fit:cover;border-radius:6px;border:1px solid var(--border);flex-shrink:0"
-             onerror="this.style.display='none'" />
+        <img src="${item.url}" alt=""
+             style="width:60px;height:42px;object-fit:cover;border-radius:6px;border:1px solid var(--border);flex-shrink:0" />
         <div style="flex:1;min-width:0">
-          <div style="font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${item.url}</div>
-          ${item.caption ? `<div style="font-size:12px;color:var(--text);margin-top:2px">${item.caption}</div>` : ''}
+          ${item.caption
+            ? `<div style="font-size:13px;color:var(--text)">${item.caption}</div>`
+            : `<div style="font-size:12px;color:var(--muted)">キャプションなし</div>`}
         </div>
         <button onclick="deleteGallery(${i})"
           style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:11px;color:var(--muted);cursor:pointer;white-space:nowrap;flex-shrink:0">
@@ -668,20 +707,22 @@
     `).join('');
   }
 
-  function previewGalleryImage(url) {
+  function previewGalleryFile(input) {
     const img = document.getElementById('preview-img');
-    if (url && url.startsWith('http')) {
-      img.src = url; img.style.display = 'block';
-      img.onerror = () => { img.style.display = 'none'; };
-    } else { img.style.display = 'none'; }
+    const file = input.files[0];
+    if (!file) { img.style.display = 'none'; return; }
+    const reader = new FileReader();
+    reader.onload = e => { img.src = e.target.result; img.style.display = 'block'; };
+    reader.readAsDataURL(file);
   }
 
-  function previewAchPhoto(url) {
+  function previewAchFile(input) {
     const img = document.getElementById('ach-preview-img');
-    if (url && url.startsWith('http')) {
-      img.src = url; img.style.display = 'block';
-      img.onerror = () => { img.style.display = 'none'; };
-    } else { img.style.display = 'none'; }
+    const file = input.files[0];
+    if (!file) { img.style.display = 'none'; return; }
+    const reader = new FileReader();
+    reader.onload = e => { img.src = e.target.result; img.style.display = 'block'; };
+    reader.readAsDataURL(file);
   }
 
   // ── 活動実績 ─────────────────────────────────────────────────────────────
@@ -719,34 +760,44 @@
     `).join('');
   }
 
-  function submitAchievement(e) {
+  async function submitAchievement(e) {
     e.preventDefault();
-    const photo = document.getElementById('ach-photo').value.trim();
+    const photoFile = document.getElementById('ach-photo').files[0];
     const item = {
       date:     document.getElementById('ach-date').value.trim(),
       category: document.getElementById('ach-category').value,
       title:    document.getElementById('ach-title').value.trim(),
       desc:     document.getElementById('ach-desc').value.trim(),
-      photo:    photo,
       link:     document.getElementById('ach-link').value.trim()
     };
     if (!item.title) return;
-    const items = loadAchievements();
-    items.push(item);
-    saveAchievements(items);
-    renderAchList();
-    // 写真URLがあればギャラリーにも自動追加
-    if (photo) {
-      const caption = [item.date, item.title].filter(Boolean).join(' ');
-      addToGallery(photo, caption);
+
+    const btn = document.getElementById('btn-ach');
+    setLoading(btn, true);
+    try {
+      // 写真ファイルがあれば圧縮してギャラリーにも追加
+      if (photoFile) {
+        const dataUrl = await compressImage(photoFile);
+        item.photo = dataUrl;
+        const caption = [item.date, item.title].filter(Boolean).join(' ');
+        addToGallery(dataUrl, caption);
+      }
+      const items = loadAchievements();
+      items.push(item);
+      saveAchievements(items);
+      renderAchList();
+      document.getElementById('ach-date').value  = '';
+      document.getElementById('ach-title').value = '';
+      document.getElementById('ach-desc').value  = '';
+      document.getElementById('ach-photo').value = '';
+      document.getElementById('ach-link').value  = '';
+      document.getElementById('ach-preview-img').style.display = 'none';
+      showToast('活動実績を追加しました！' + (photoFile ? '（写真もギャラリーに追加）' : ''), 'success');
+    } catch (err) {
+      if (err.message !== 'storage full') showToast('画像の処理に失敗しました', 'error');
+    } finally {
+      setLoading(btn, false);
     }
-    document.getElementById('ach-date').value  = '';
-    document.getElementById('ach-title').value = '';
-    document.getElementById('ach-desc').value  = '';
-    document.getElementById('ach-photo').value = '';
-    document.getElementById('ach-link').value  = '';
-    document.getElementById('ach-preview-img').style.display = 'none';
-    showToast('活動実績を追加しました！' + (photo ? '（写真もギャラリーに追加）' : ''), 'success');
   }
 
   function deleteAchievement(index) {
