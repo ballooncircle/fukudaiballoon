@@ -80,6 +80,7 @@
         <li><a href="#balloon">所有気球</a></li>
         <li><a href="#sponsor">スポンサー</a></li>
         <li><a href="#achievements">活動実績</a></li>
+        <li><a href="#gallery">ギャラリー</a></li>
         <li><a href="#contact">お問い合わせ</a></li>
       </ul>
     </div>
@@ -302,6 +303,12 @@
         <div class="gold-line"></div>
       </div>
       <div class="gallery-grid" id="gallery-grid"></div>
+      <div id="gallery-more-wrap" style="display:none;text-align:center;margin-top:32px">
+        <button id="gallery-more-btn" onclick="galleryShowAll()"
+          style="padding:12px 36px;border:2px solid var(--primary);border-radius:30px;background:transparent;color:var(--primary);font-size:0.9rem;font-family:inherit;font-weight:500;cursor:pointer;letter-spacing:0.06em;transition:all 0.2s">
+          もっと見る
+        </button>
+      </div>
     </div>
   </section>
 
@@ -654,13 +661,16 @@
     }
 
     // ギャラリーをIndexedDBから読み込む
-    (async function () {
-      let meta;
-      try { meta = JSON.parse(localStorage.getItem('fdb_gallery') || '[]'); }
-      catch { meta = []; }
-      if (!meta.length) return;
+    const GALLERY_INITIAL = 12;
+    let _galleryMeta = [];
+    let _galleryDB   = null;
 
-      const db = await new Promise((resolve) => {
+    async function galleryInit() {
+      try { _galleryMeta = JSON.parse(localStorage.getItem('fdb_gallery') || '[]'); }
+      catch { _galleryMeta = []; }
+      if (!_galleryMeta.length) return;
+
+      _galleryDB = await new Promise((resolve) => {
         const req = indexedDB.open('fdb_images', 1);
         req.onupgradeneeded = e =>
           e.target.result.createObjectStore('photos', { autoIncrement: true });
@@ -668,25 +678,36 @@
         req.onerror   = () => resolve(null);
       });
 
-      const section = document.getElementById('gallery');
-      const grid    = document.getElementById('gallery-grid');
-      section.style.display = 'block';
+      document.getElementById('gallery').style.display = 'block';
+      await galleryRenderSlice(0, Math.min(GALLERY_INITIAL, _galleryMeta.length));
 
-      // キャプションだけ先に表示（画像はあとから差し込む）
-      grid.innerHTML = meta.map((item, i) => `
-        <div class="gallery-cell" id="gcell-${i}">
-          <div style="width:100%;aspect-ratio:4/3;background:#f0d8bc;border-radius:4px"></div>
-          ${item.caption ? `<p class="gallery-caption">${item.caption.replace(/</g,'&lt;')}</p>` : ''}
-        </div>
-      `).join('');
+      if (_galleryMeta.length > GALLERY_INITIAL) {
+        const wrap = document.getElementById('gallery-more-wrap');
+        const btn  = document.getElementById('gallery-more-btn');
+        btn.textContent = `もっと見る（あと${_galleryMeta.length - GALLERY_INITIAL}枚）`;
+        wrap.style.display = 'block';
+      }
+    }
 
-      if (!db) return;
-      meta.forEach(async (item, i) => {
-        if (item.id == null) return;
+    async function galleryRenderSlice(from, to) {
+      const grid = document.getElementById('gallery-grid');
+      const slice = _galleryMeta.slice(from, to);
+      const placeholder = slice.map((item, j) => {
+        const i = from + j;
+        return `
+          <div class="gallery-cell fade-in" id="gcell-${i}">
+            <div style="width:100%;aspect-ratio:4/3;background:#f0d8bc;border-radius:4px"></div>
+            ${item.caption ? `<p class="gallery-caption">${item.caption.replace(/</g,'&lt;')}</p>` : ''}
+          </div>`;
+      }).join('');
+      grid.insertAdjacentHTML('beforeend', placeholder);
+      slice.forEach(async (item, j) => {
+        const i = from + j;
+        if (!_galleryDB || item.id == null) return;
         try {
           const blob = await new Promise((res, rej) => {
-            const req = db.transaction('photos','readonly')
-                          .objectStore('photos').get(item.id);
+            const req = _galleryDB.transaction('photos','readonly')
+                                  .objectStore('photos').get(item.id);
             req.onsuccess = e => res(e.target.result);
             req.onerror   = e => rej(e.target.error);
           });
@@ -699,9 +720,17 @@
           img.alt    = item.caption || '';
           img.loading = 'lazy';
           cell.querySelector('div').replaceWith(img);
+          fadeObserver.observe(cell);
         } catch {}
       });
-    })();
+    }
+
+    async function galleryShowAll() {
+      document.getElementById('gallery-more-wrap').style.display = 'none';
+      await galleryRenderSlice(GALLERY_INITIAL, _galleryMeta.length);
+    }
+
+    galleryInit();
   </script>
 </body>
 </html>

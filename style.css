@@ -595,6 +595,11 @@ a   { color: inherit; text-decoration: none; }
   letter-spacing: 0.04em;
 }
 
+#gallery-more-btn:hover {
+  background: var(--primary);
+  color: #fff;
+}
+
 /* ============================================================
    Sponsor  (white)
    ============================================================ */
