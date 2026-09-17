@@ -548,7 +548,7 @@
     document.getElementById('admin-screen').style.display = 'block';
     loadGasUrl();
     renderAchList();
-    renderGalleryList();
+    renderGalleryList(); // async - runs in background
   }
 
   // ── GAS URL ──────────────────────────────────────────────────────────────
@@ -607,8 +607,53 @@
     }
   }
 
+  // ── IndexedDB ────────────────────────────────────────────────────────────
+  const IDB_NAME  = 'fdb_images';
+  const IDB_VER   = 1;
+  const IDB_STORE = 'photos';
+
+  function openDB() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(IDB_NAME, IDB_VER);
+      req.onupgradeneeded = e =>
+        e.target.result.createObjectStore(IDB_STORE, { autoIncrement: true });
+      req.onsuccess = e => resolve(e.target.result);
+      req.onerror   = e => reject(e.target.error);
+    });
+  }
+
+  async function saveBlob(blob) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction(IDB_STORE, 'readwrite')
+                    .objectStore(IDB_STORE).add(blob);
+      req.onsuccess = e => resolve(e.target.result);
+      req.onerror   = e => reject(e.target.error);
+    });
+  }
+
+  async function loadBlob(id) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction(IDB_STORE, 'readonly')
+                    .objectStore(IDB_STORE).get(id);
+      req.onsuccess = e => resolve(e.target.result);
+      req.onerror   = e => reject(e.target.error);
+    });
+  }
+
+  async function deleteBlob(id) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction(IDB_STORE, 'readwrite')
+                    .objectStore(IDB_STORE).delete(id);
+      req.onsuccess = () => resolve();
+      req.onerror   = e => reject(e.target.error);
+    });
+  }
+
   // ── 画像圧縮ユーティリティ ───────────────────────────────────────────────
-  function compressImage(file) {
+  function compressToBlob(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = e => {
@@ -620,7 +665,8 @@
           const canvas = document.createElement('canvas');
           canvas.width = w; canvas.height = h;
           canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-          resolve(canvas.toDataURL('image/jpeg', 0.82));
+          canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('compress failed')),
+                        'image/jpeg', 0.82);
         };
         img.onerror = reject;
         img.src = e.target.result;
@@ -630,21 +676,16 @@
     });
   }
 
-  // ── ギャラリー（localStorage）───────────────────────────────────────────
+  // ── ギャラリー（メタ：localStorage ／ 画像：IndexedDB）──────────────────
   const GAL_KEY = 'fdb_gallery';
 
-  function loadGallery() {
+  function loadGalleryMeta() {
     try { return JSON.parse(localStorage.getItem(GAL_KEY) || '[]'); }
     catch { return []; }
   }
 
-  function saveGallery(items) {
-    try {
-      localStorage.setItem(GAL_KEY, JSON.stringify(items));
-    } catch {
-      showToast('保存容量が不足しています。古い写真を削除してください。', 'error');
-      throw new Error('storage full');
-    }
+  function saveGalleryMeta(items) {
+    localStorage.setItem(GAL_KEY, JSON.stringify(items));
   }
 
   async function submitGallery(e) {
@@ -655,45 +696,56 @@
     if (!files.length) return;
     setLoading(btn, true);
     try {
-      const dataUrls = await Promise.all(files.map(f => compressImage(f)));
-      dataUrls.forEach(url => addToGallery(url, caption));
+      for (const file of files) {
+        const blob = await compressToBlob(file);
+        const id   = await saveBlob(blob);
+        const meta = loadGalleryMeta();
+        meta.push({ id, caption });
+        saveGalleryMeta(meta);
+      }
       document.getElementById('gallery-file').value    = '';
       document.getElementById('gallery-caption').value = '';
       document.getElementById('gallery-preview-wrap').innerHTML = '';
       showToast(`ギャラリーに${files.length}枚追加しました！`, 'success');
-    } catch (err) {
-      if (err.message !== 'storage full') showToast('画像の処理に失敗しました', 'error');
+      renderGalleryList();
+    } catch {
+      showToast('画像の処理に失敗しました', 'error');
     } finally {
       setLoading(btn, false);
     }
   }
 
-  function addToGallery(dataUrl, caption) {
-    const items = loadGallery();
-    items.push({ url: dataUrl, caption: caption || '' });
-    saveGallery(items);
+  async function addToGallery(file, caption) {
+    const blob = await compressToBlob(file);
+    const id   = await saveBlob(blob);
+    const meta = loadGalleryMeta();
+    meta.push({ id, caption: caption || '' });
+    saveGalleryMeta(meta);
     renderGalleryList();
   }
 
-  function deleteGallery(index) {
-    const items = loadGallery();
-    items.splice(index, 1);
-    saveGallery(items);
+  async function deleteGallery(index) {
+    const meta = loadGalleryMeta();
+    const item = meta[index];
+    if (item && item.id != null) {
+      await deleteBlob(item.id).catch(() => {});
+    }
+    meta.splice(index, 1);
+    saveGalleryMeta(meta);
     renderGalleryList();
     showToast('削除しました', '');
   }
 
-  function renderGalleryList() {
-    const items = loadGallery();
-    const el    = document.getElementById('gallery-list');
-    if (!items.length) {
+  async function renderGalleryList() {
+    const meta = loadGalleryMeta();
+    const el   = document.getElementById('gallery-list');
+    if (!meta.length) {
       el.innerHTML = '<p style="font-size:13px;color:var(--muted);padding:8px 0">まだ写真がありません</p>';
       return;
     }
-    el.innerHTML = items.map((item, i) => `
-      <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
-        <img src="${item.url}" alt=""
-             style="width:60px;height:42px;object-fit:cover;border-radius:6px;border:1px solid var(--border);flex-shrink:0" />
+    el.innerHTML = meta.map((item, i) => `
+      <div id="grow-${i}" style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
+        <div style="width:60px;height:42px;background:var(--border);border-radius:6px;flex-shrink:0"></div>
         <div style="flex:1;min-width:0">
           ${item.caption
             ? `<div style="font-size:13px;color:var(--text)">${item.caption}</div>`
@@ -705,6 +757,21 @@
         </button>
       </div>
     `).join('');
+
+    meta.forEach(async (item, i) => {
+      if (item.id == null) return;
+      try {
+        const blob = await loadBlob(item.id);
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        const row = document.getElementById(`grow-${i}`);
+        if (!row) return;
+        const img = document.createElement('img');
+        img.src = url;
+        img.style.cssText = 'width:60px;height:42px;object-fit:cover;border-radius:6px;border:1px solid var(--border);flex-shrink:0';
+        row.querySelector('div').replaceWith(img);
+      } catch {}
+    });
   }
 
   function previewGalleryFiles(input) {
@@ -789,9 +856,9 @@
     try {
       if (photoFiles.length > 0) {
         const caption = [item.date, item.title].filter(Boolean).join(' ');
-        const dataUrls = await Promise.all(photoFiles.map(f => compressImage(f)));
-        dataUrls.forEach(url => addToGallery(url, caption));
-        item.photos = dataUrls;
+        for (const f of photoFiles) {
+          await addToGallery(f, caption);
+        }
       }
       const items = loadAchievements();
       items.push(item);
@@ -807,8 +874,8 @@
         ? `活動実績を追加しました！（写真${photoFiles.length}枚をギャラリーに追加）`
         : '活動実績を追加しました！';
       showToast(msg, 'success');
-    } catch (err) {
-      if (err.message !== 'storage full') showToast('画像の処理に失敗しました', 'error');
+    } catch {
+      showToast('画像の処理に失敗しました', 'error');
     } finally {
       setLoading(btn, false);
     }

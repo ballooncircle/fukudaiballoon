@@ -647,15 +647,61 @@
       document.querySelectorAll('.ach-card.fade-in').forEach(el => fadeObserver.observe(el));
     })();
 
-    // お知らせ・ギャラリーをlocalStorageから読み込む
+    // お知らせをlocalStorageから読み込む
     const notice = localStorage.getItem('fdb_notice');
     if (notice && notice.trim()) {
       applyNotice([{ date: '', title: notice, content: '' }]);
     }
-    let galleryItems;
-    try { galleryItems = JSON.parse(localStorage.getItem('fdb_gallery') || '[]'); }
-    catch { galleryItems = []; }
-    applyGallery(galleryItems);
+
+    // ギャラリーをIndexedDBから読み込む
+    (async function () {
+      let meta;
+      try { meta = JSON.parse(localStorage.getItem('fdb_gallery') || '[]'); }
+      catch { meta = []; }
+      if (!meta.length) return;
+
+      const db = await new Promise((resolve) => {
+        const req = indexedDB.open('fdb_images', 1);
+        req.onupgradeneeded = e =>
+          e.target.result.createObjectStore('photos', { autoIncrement: true });
+        req.onsuccess = e => resolve(e.target.result);
+        req.onerror   = () => resolve(null);
+      });
+
+      const section = document.getElementById('gallery');
+      const grid    = document.getElementById('gallery-grid');
+      section.style.display = 'block';
+
+      // キャプションだけ先に表示（画像はあとから差し込む）
+      grid.innerHTML = meta.map((item, i) => `
+        <div class="gallery-cell" id="gcell-${i}">
+          <div style="width:100%;aspect-ratio:4/3;background:#f0d8bc;border-radius:4px"></div>
+          ${item.caption ? `<p class="gallery-caption">${item.caption.replace(/</g,'&lt;')}</p>` : ''}
+        </div>
+      `).join('');
+
+      if (!db) return;
+      meta.forEach(async (item, i) => {
+        if (item.id == null) return;
+        try {
+          const blob = await new Promise((res, rej) => {
+            const req = db.transaction('photos','readonly')
+                          .objectStore('photos').get(item.id);
+            req.onsuccess = e => res(e.target.result);
+            req.onerror   = e => rej(e.target.error);
+          });
+          if (!blob) return;
+          const url  = URL.createObjectURL(blob);
+          const cell = document.getElementById(`gcell-${i}`);
+          if (!cell) return;
+          const img  = new Image();
+          img.src    = url;
+          img.alt    = item.caption || '';
+          img.loading = 'lazy';
+          cell.querySelector('div').replaceWith(img);
+        } catch {}
+      });
+    })();
   </script>
 </body>
 </html>
