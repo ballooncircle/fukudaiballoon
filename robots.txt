@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://shinnaka10.github.io/fukudaiballoon/sitemap.xml
+Sitemap: https://ballooncircle.github.io/fukudaiballoon/sitemap.xml
