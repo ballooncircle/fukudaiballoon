@@ -416,18 +416,18 @@
       </form>
     </div>
 
-    <!-- ギャラリー追加 -->
+    <!-- ギャラリー管理 -->
     <div class="card">
       <div class="card-title">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-        ギャラリー画像追加
+        バルーンギャラリー
       </div>
-      <p class="card-desc">画像の URL を入力してください。スプレッドシートの「ギャラリー」シートに追加されます。</p>
-      <form class="form-row" onsubmit="submitGallery(event)">
+      <p class="card-desc">写真のURLを入力するとギャラリーに追加されます。活動実績に写真を添付した場合は自動的にここにも追加されます。</p>
+      <form class="form-row" onsubmit="submitGallery(event)" style="margin-bottom:28px">
         <div class="form-group">
           <label>画像 URL <span class="req">*</span></label>
           <input type="url" id="gallery-url" placeholder="https://..." required
-                 oninput="previewImage(this.value)" />
+                 oninput="previewGalleryImage(this.value)" />
         </div>
         <img id="preview-img" class="preview-img" alt="プレビュー" />
         <div class="form-group">
@@ -435,12 +435,17 @@
           <input type="text" id="gallery-caption" placeholder="例：2025年佐賀バルーンフェスタ" />
         </div>
         <div>
-          <button type="submit" class="btn-submit" id="btn-gallery">
-            <div class="spinner"></div>
+          <button type="submit" class="btn-submit">
             <span class="btn-label">追加する</span>
           </button>
         </div>
       </form>
+
+      <!-- 登録済みリスト -->
+      <div id="gallery-list-wrap">
+        <p style="font-size:12px;font-weight:500;color:var(--muted);margin-bottom:10px;letter-spacing:0.05em">登録済み写真</p>
+        <div id="gallery-list"></div>
+      </div>
     </div>
 
     <!-- 活動実績 -->
@@ -475,6 +480,13 @@
         <div class="form-group">
           <label>詳細（省略可）</label>
           <textarea id="ach-desc" placeholder="詳細な内容"></textarea>
+        </div>
+        <div class="form-group">
+          <label>写真 URL（省略可）</label>
+          <input type="url" id="ach-photo" placeholder="https://..."
+                 oninput="previewAchPhoto(this.value)" />
+          <img id="ach-preview-img" class="preview-img" alt="プレビュー" style="margin-top:6px" />
+          <p style="font-size:11px;color:var(--muted);margin-top:4px">入力するとギャラリーにも自動追加されます</p>
         </div>
         <div class="form-group">
           <label>リンク（省略可）</label>
@@ -534,6 +546,7 @@
     document.getElementById('admin-screen').style.display = 'block';
     loadGasUrl();
     renderAchList();
+    renderGalleryList();
   }
 
   // ── GAS URL ──────────────────────────────────────────────────────────────
@@ -592,48 +605,85 @@
     }
   }
 
-  // ── ギャラリー追加 ───────────────────────────────────────────────────────
-  async function submitGallery(e) {
+  // ── ギャラリー（localStorage）───────────────────────────────────────────
+  const GAL_KEY = 'fdb_gallery';
+
+  function loadGallery() {
+    try { return JSON.parse(localStorage.getItem(GAL_KEY) || '[]'); }
+    catch { return []; }
+  }
+
+  function saveGallery(items) {
+    localStorage.setItem(GAL_KEY, JSON.stringify(items));
+  }
+
+  function submitGallery(e) {
     e.preventDefault();
-    const btn = document.getElementById('btn-gallery');
-    setLoading(btn, true);
-    try {
-      const result = await postToGas({
-        action:   'add_gallery',
-        url:      document.getElementById('gallery-url').value.trim(),
-        caption:  document.getElementById('gallery-caption').value.trim()
-      });
-      if (result.status === 'ok') {
-        showToast('ギャラリーに追加しました！', 'success');
-        document.getElementById('gallery-url').value     = '';
-        document.getElementById('gallery-caption').value = '';
-        document.getElementById('preview-img').style.display = 'none';
-      } else {
-        showToast('エラー: ' + result.message, 'error');
-      }
-    } catch (err) {
-      showToast('通信エラー: ' + err.message, 'error');
-    } finally {
-      setLoading(btn, false);
+    const url     = document.getElementById('gallery-url').value.trim();
+    const caption = document.getElementById('gallery-caption').value.trim();
+    if (!url) return;
+    addToGallery(url, caption);
+    document.getElementById('gallery-url').value     = '';
+    document.getElementById('gallery-caption').value = '';
+    document.getElementById('preview-img').style.display = 'none';
+    showToast('ギャラリーに追加しました！', 'success');
+  }
+
+  function addToGallery(url, caption) {
+    const items = loadGallery();
+    items.push({ url, caption: caption || '' });
+    saveGallery(items);
+    renderGalleryList();
+  }
+
+  function deleteGallery(index) {
+    const items = loadGallery();
+    items.splice(index, 1);
+    saveGallery(items);
+    renderGalleryList();
+    showToast('削除しました', '');
+  }
+
+  function renderGalleryList() {
+    const items = loadGallery();
+    const el    = document.getElementById('gallery-list');
+    if (!items.length) {
+      el.innerHTML = '<p style="font-size:13px;color:var(--muted);padding:8px 0">まだ写真がありません</p>';
+      return;
     }
+    el.innerHTML = items.map((item, i) => `
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
+        <img src="${item.url.replace(/"/g,'')}" alt=""
+             style="width:60px;height:42px;object-fit:cover;border-radius:6px;border:1px solid var(--border);flex-shrink:0"
+             onerror="this.style.display='none'" />
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${item.url}</div>
+          ${item.caption ? `<div style="font-size:12px;color:var(--text);margin-top:2px">${item.caption}</div>` : ''}
+        </div>
+        <button onclick="deleteGallery(${i})"
+          style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:11px;color:var(--muted);cursor:pointer;white-space:nowrap;flex-shrink:0">
+          削除
+        </button>
+      </div>
+    `).join('');
   }
 
-  // ── GAS API 呼び出し ─────────────────────────────────────────────────────
-  async function postToGas(payload) {
-    const gasUrl = localStorage.getItem(GAS_KEY);
-    if (!gasUrl) throw new Error('GAS URLが設定されていません');
-
-    const resp = await fetch(gasUrl, {
-      method:  'POST',
-      headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
-      body:    JSON.stringify(payload)
-    });
-
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    return resp.json();
+  function previewGalleryImage(url) {
+    const img = document.getElementById('preview-img');
+    if (url && url.startsWith('http')) {
+      img.src = url; img.style.display = 'block';
+      img.onerror = () => { img.style.display = 'none'; };
+    } else { img.style.display = 'none'; }
   }
 
-  // ── 画像プレビュー ───────────────────────────────────────────────────────
+  function previewAchPhoto(url) {
+    const img = document.getElementById('ach-preview-img');
+    if (url && url.startsWith('http')) {
+      img.src = url; img.style.display = 'block';
+      img.onerror = () => { img.style.display = 'none'; };
+    } else { img.style.display = 'none'; }
+  }
+
   // ── 活動実績 ─────────────────────────────────────────────────────────────
   const ACH_KEY = 'fdb_achievements';
 
@@ -671,11 +721,13 @@
 
   function submitAchievement(e) {
     e.preventDefault();
+    const photo = document.getElementById('ach-photo').value.trim();
     const item = {
       date:     document.getElementById('ach-date').value.trim(),
       category: document.getElementById('ach-category').value,
       title:    document.getElementById('ach-title').value.trim(),
       desc:     document.getElementById('ach-desc').value.trim(),
+      photo:    photo,
       link:     document.getElementById('ach-link').value.trim()
     };
     if (!item.title) return;
@@ -683,11 +735,18 @@
     items.push(item);
     saveAchievements(items);
     renderAchList();
+    // 写真URLがあればギャラリーにも自動追加
+    if (photo) {
+      const caption = [item.date, item.title].filter(Boolean).join(' ');
+      addToGallery(photo, caption);
+    }
     document.getElementById('ach-date').value  = '';
     document.getElementById('ach-title').value = '';
     document.getElementById('ach-desc').value  = '';
+    document.getElementById('ach-photo').value = '';
     document.getElementById('ach-link').value  = '';
-    showToast('活動実績を追加しました！', 'success');
+    document.getElementById('ach-preview-img').style.display = 'none';
+    showToast('活動実績を追加しました！' + (photo ? '（写真もギャラリーに追加）' : ''), 'success');
   }
 
   function deleteAchievement(index) {
@@ -696,17 +755,6 @@
     saveAchievements(items);
     renderAchList();
     showToast('削除しました', '');
-  }
-
-  function previewImage(url) {
-    const img = document.getElementById('preview-img');
-    if (url && url.startsWith('http')) {
-      img.src              = url;
-      img.style.display    = 'block';
-      img.onerror = () => { img.style.display = 'none'; };
-    } else {
-      img.style.display = 'none';
-    }
   }
 
   // ── UI ユーティリティ ────────────────────────────────────────────────────
