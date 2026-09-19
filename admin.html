@@ -677,11 +677,8 @@
       await ghPut('data/gallery.json', b64, 'update: ギャラリー更新', sha);
     } catch (err) {
       if (err.message && err.message.includes('does not match')) {
-        // SHA競合：最新SHAを取得してリトライ
-        const fresh = await readGalleryJson();
-        const merged = [...fresh.images, ...images.filter(n => !fresh.images.some(e => e.url === n.url))];
-        const b64r = btoa(unescape(encodeURIComponent(JSON.stringify({ images: merged }, null, 2))));
-        await ghPut('data/gallery.json', b64r, 'update: ギャラリー更新', fresh.sha);
+        const { sha: freshSha } = await readGalleryJson();
+        await ghPut('data/gallery.json', b64, 'update: ギャラリー更新', freshSha);
       } else {
         throw err;
       }
@@ -705,9 +702,8 @@
       await ghPut('data/articles.json', b64, 'update: ブログ記事更新', sha);
     } catch (err) {
       if (err.message && err.message.includes('does not match')) {
-        const fresh = await readArticlesJson();
-        const b64r = btoa(unescape(encodeURIComponent(JSON.stringify({ articles }, null, 2))));
-        await ghPut('data/articles.json', b64r, 'update: ブログ記事更新', fresh.sha);
+        const { sha: freshSha } = await readArticlesJson();
+        await ghPut('data/articles.json', b64, 'update: ブログ記事更新', freshSha);
       } else { throw err; }
     }
   }
