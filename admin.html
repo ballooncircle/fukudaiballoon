@@ -798,9 +798,9 @@
         articles.unshift(entry);
       }
       await writeArticlesJson(articles, sha);
-      renderArtList();
+      renderArtList(articles);
       cancelEditArt();
-      showToast(isEdit ? '記事を更新しました！' : '記事を投稿しました！（数秒で反映）', 'success');
+      showToast(isEdit ? '記事を更新しました！' : '記事を投稿しました！（サイトへの反映に1〜3分かかります）', 'success');
     } catch (err) {
       showToast('エラー: ' + err.message, 'error');
     } finally {
@@ -808,32 +808,37 @@
     }
   }
 
-  async function renderArtList() {
+  function _paintArtList(el, articles) {
+    if (!articles.length) {
+      el.innerHTML = '<p style="font-size:13px;color:var(--muted);padding:8px 0">まだ記事がありません</p>';
+      return;
+    }
+    el.innerHTML = articles.map((a, i) => `
+      <div style="display:flex;align-items:flex-start;gap:8px;padding:12px 0;border-bottom:1px solid var(--border)">
+        <div style="flex:1">
+          <span style="font-size:11px;color:var(--muted)">${a.date || ''}</span>
+          <div style="font-size:13px;font-weight:500;color:var(--text);margin-top:2px">${a.title || ''}</div>
+          ${a.photos && a.photos.length ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">写真 ${a.photos.length}枚</div>` : ''}
+        </div>
+        <button onclick="editArticle(${i})"
+          style="background:none;border:1px solid var(--primary);border-radius:6px;padding:4px 10px;font-size:11px;color:var(--primary);cursor:pointer;white-space:nowrap;flex-shrink:0">
+          編集
+        </button>
+        <button onclick="deleteArticle(${i})"
+          style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:11px;color:var(--muted);cursor:pointer;white-space:nowrap;flex-shrink:0">
+          削除
+        </button>
+      </div>
+    `).join('');
+  }
+
+  async function renderArtList(immediateArticles) {
     const el = document.getElementById('art-list');
+    if (immediateArticles) { _paintArtList(el, immediateArticles); return; }
     el.innerHTML = '<p style="font-size:13px;color:var(--muted);padding:8px 0">読み込み中...</p>';
     try {
       const { articles } = await readArticlesJson();
-      if (!articles.length) {
-        el.innerHTML = '<p style="font-size:13px;color:var(--muted);padding:8px 0">まだ記事がありません</p>';
-        return;
-      }
-      el.innerHTML = articles.map((a, i) => `
-        <div style="display:flex;align-items:flex-start;gap:8px;padding:12px 0;border-bottom:1px solid var(--border)">
-          <div style="flex:1">
-            <span style="font-size:11px;color:var(--muted)">${a.date || ''}</span>
-            <div style="font-size:13px;font-weight:500;color:var(--text);margin-top:2px">${a.title || ''}</div>
-            ${a.photos && a.photos.length ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">写真 ${a.photos.length}枚</div>` : ''}
-          </div>
-          <button onclick="editArticle(${i})"
-            style="background:none;border:1px solid var(--primary);border-radius:6px;padding:4px 10px;font-size:11px;color:var(--primary);cursor:pointer;white-space:nowrap;flex-shrink:0">
-            編集
-          </button>
-          <button onclick="deleteArticle(${i})"
-            style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:11px;color:var(--muted);cursor:pointer;white-space:nowrap;flex-shrink:0">
-            削除
-          </button>
-        </div>
-      `).join('');
+      _paintArtList(el, articles);
     } catch {
       el.innerHTML = '<p style="font-size:13px;color:var(--muted);padding:8px 0">（トークン未設定）</p>';
     }
