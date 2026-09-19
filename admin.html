@@ -434,15 +434,21 @@
           <input type="text" id="art-title" placeholder="例：第53回北海道バルーンフェスティバル" required />
         </div>
         <div class="form-group">
-          <label>本文</label>
-          <textarea id="art-body" rows="8" placeholder="記事の本文を入力してください。空行で段落が分かれます。"></textarea>
-        </div>
-        <div class="form-group">
-          <label>写真ファイル（複数選択可）</label>
-          <input type="file" id="art-photo" accept="image/*" multiple
-                 onchange="previewArtFiles(this)" style="padding:8px 14px;cursor:pointer" />
-          <div id="art-preview-wrap" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"></div>
-          <p style="font-size:11px;color:var(--muted);margin-top:4px">アップロードするとギャラリーにも自動追加されます</p>
+          <label>コンテンツ（テキストと写真を自由に並べられます）</label>
+          <div id="art-blocks" style="display:flex;flex-direction:column;gap:10px;margin-bottom:10px"></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button type="button" onclick="addArtTextBlock()"
+              style="padding:7px 16px;border:1.5px dashed var(--border);border-radius:8px;background:none;font-size:13px;color:var(--muted);cursor:pointer">
+              ＋ テキスト
+            </button>
+            <button type="button" onclick="document.getElementById('art-photo-input').click()"
+              style="padding:7px 16px;border:1.5px dashed var(--border);border-radius:8px;background:none;font-size:13px;color:var(--muted);cursor:pointer">
+              ＋ 写真
+            </button>
+            <input type="file" id="art-photo-input" accept="image/*" multiple style="display:none"
+                   onchange="onArtPhotoSelected(this)" />
+          </div>
+          <p style="font-size:11px;color:var(--muted);margin-top:8px">写真はギャラリーにも自動追加されます</p>
         </div>
         <input type="hidden" id="art-edit-index" value="" />
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
@@ -712,26 +718,70 @@
     }
   }
 
-  let _artFiles = [];
+  // ブロックエディタ
+  // _artBlocks: [{type:'text',content:''} | {type:'photo',file:File,previewUrl:'...'} | {type:'photo',url:'...'}]
+  let _artBlocks = [];
 
-  function removeArtFile(idx) {
-    _artFiles.splice(idx, 1);
-    renderFilePreview(_artFiles, 'art-preview-wrap', removeArtFile);
+  function syncArtBlockTexts() {
+    _artBlocks.forEach((b, i) => {
+      if (b.type === 'text') {
+        const ta = document.getElementById(`art-block-text-${i}`);
+        if (ta) b.content = ta.value;
+      }
+    });
   }
 
-  function previewArtFiles(input) {
-    _artFiles = [..._artFiles, ...Array.from(input.files)];
+  function renderArtBlocks() {
+    const esc = s => (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    const container = document.getElementById('art-blocks');
+    container.innerHTML = _artBlocks.map((b, i) => {
+      const delBtn = `<button type="button" onclick="removeArtBlock(${i})"
+        style="flex-shrink:0;background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:12px;color:var(--muted);cursor:pointer;align-self:flex-start">削除</button>`;
+      if (b.type === 'text') {
+        return `<div style="display:flex;gap:8px;align-items:flex-start">
+          <textarea id="art-block-text-${i}" rows="4"
+            style="flex:1;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:var(--sans);resize:vertical;outline:none;line-height:1.7"
+            placeholder="テキストを入力…">${esc(b.content)}</textarea>
+          ${delBtn}
+        </div>`;
+      } else {
+        const src = b.previewUrl || b.url;
+        return `<div style="display:flex;gap:8px;align-items:center">
+          <img src="${esc(src)}" style="width:120px;height:80px;object-fit:cover;border-radius:8px;border:1.5px solid var(--border);flex-shrink:0" />
+          ${delBtn}
+        </div>`;
+      }
+    }).join('');
+  }
+
+  function addArtTextBlock() {
+    syncArtBlockTexts();
+    _artBlocks.push({ type: 'text', content: '' });
+    renderArtBlocks();
+    const i = _artBlocks.length - 1;
+    setTimeout(() => document.getElementById(`art-block-text-${i}`)?.focus(), 50);
+  }
+
+  function onArtPhotoSelected(input) {
+    syncArtBlockTexts();
+    Array.from(input.files).forEach(file => {
+      _artBlocks.push({ type: 'photo', file, previewUrl: URL.createObjectURL(file) });
+    });
     input.value = '';
-    renderFilePreview(_artFiles, 'art-preview-wrap', removeArtFile);
+    renderArtBlocks();
+  }
+
+  function removeArtBlock(i) {
+    syncArtBlockTexts();
+    _artBlocks.splice(i, 1);
+    renderArtBlocks();
   }
 
   function cancelEditArt() {
     document.getElementById('art-date').value  = '';
     document.getElementById('art-title').value = '';
-    document.getElementById('art-body').value  = '';
-    _artFiles = [];
-    document.getElementById('art-photo').value = '';
-    document.getElementById('art-preview-wrap').innerHTML = '';
+    _artBlocks = [];
+    renderArtBlocks();
     document.getElementById('art-edit-index').value = '';
     document.querySelector('#btn-art .btn-label').textContent = '投稿する';
     document.getElementById('btn-art-cancel').style.display = 'none';
@@ -743,7 +793,17 @@
       if (!a) return;
       document.getElementById('art-date').value  = a.date  || '';
       document.getElementById('art-title').value = a.title || '';
-      document.getElementById('art-body').value  = a.body  || '';
+      // ブロック形式に変換（旧形式対応）
+      if (a.blocks) {
+        _artBlocks = a.blocks.map(b =>
+          b.type === 'photo' ? { type: 'photo', url: b.url } : { type: 'text', content: b.content || '' }
+        );
+      } else {
+        _artBlocks = [];
+        if (a.body) _artBlocks.push({ type: 'text', content: a.body });
+        (a.photos || []).forEach(url => _artBlocks.push({ type: 'photo', url }));
+      }
+      renderArtBlocks();
       document.getElementById('art-edit-index').value = index;
       document.querySelector('#btn-art .btn-label').textContent = '更新する';
       document.getElementById('btn-art-cancel').style.display = '';
@@ -764,14 +824,14 @@
 
   async function submitArticle(e) {
     e.preventDefault();
-    const photoFiles = _artFiles.slice();
+    syncArtBlockTexts();
     const editIndexVal = document.getElementById('art-edit-index').value;
     const isEdit = editIndexVal !== '';
     const entry = {
-      id:     Date.now().toString(),
-      date:   document.getElementById('art-date').value.trim(),
-      title:  document.getElementById('art-title').value.trim(),
-      body:   document.getElementById('art-body').value.trim(),
+      id:    isEdit ? '' : Date.now().toString(),
+      date:  document.getElementById('art-date').value.trim(),
+      title: document.getElementById('art-title').value.trim(),
+      blocks: [],
       photos: []
     };
     if (!entry.title) return;
@@ -779,20 +839,30 @@
     const btn = document.getElementById('btn-art');
     setLoading(btn, true);
     try {
-      if (photoFiles.length > 0) {
-        const paths = [];
-        for (const f of photoFiles) paths.push(await uploadImageFile(f));
-        entry.photos = paths;
+      const newPhotoUrls = [];
+      for (const b of _artBlocks) {
+        if (b.type === 'text') {
+          if (b.content.trim()) entry.blocks.push({ type: 'text', content: b.content.trim() });
+        } else if (b.type === 'photo') {
+          let url = b.url;
+          if (b.file) {
+            url = await uploadImageFile(b.file);
+            newPhotoUrls.push(url);
+          }
+          if (url) { entry.blocks.push({ type: 'photo', url }); entry.photos.push(url); }
+        }
+      }
+
+      if (newPhotoUrls.length > 0) {
         const { images, sha: galSha } = await readGalleryJson();
         const caption = [entry.date, entry.title].filter(Boolean).join(' ');
-        await writeGalleryJson([...images, ...paths.map(url => ({ url, caption }))], galSha);
+        await writeGalleryJson([...images, ...newPhotoUrls.map(url => ({ url, caption }))], galSha);
       }
 
       const { articles, sha } = await readArticlesJson();
       if (isEdit) {
         const idx = parseInt(editIndexVal, 10);
-        entry.id = articles[idx].id || entry.id;
-        entry.photos = [...(articles[idx].photos || []), ...entry.photos];
+        entry.id = articles[idx].id || Date.now().toString();
         articles[idx] = entry;
       } else {
         articles.unshift(entry);

@@ -749,22 +749,40 @@
         const esc = s => (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
         const feed = document.getElementById('blog-feed');
         feed.innerHTML = articles.map(a => {
-          const photos = a.photos || [];
-          const photoCls = photos.length === 1 ? 'photos-1' : photos.length === 2 ? 'photos-2' : '';
-          const photoHtml = photos.length ? `
-            <div class="blog-post-photos ${photoCls}">
-              ${photos.map(p => `<img class="blog-post-photo" src="${esc(p)}" alt="" loading="lazy" onclick="openLightbox('${esc(p)}')" />`).join('')}
-            </div>` : '';
-          const bodyHtml = (a.body || '').split(/\n\n+/).filter(Boolean)
-            .map(p => `<p>${esc(p).replace(/\n/g,'<br>')}</p>`).join('');
+          let contentHtml = '';
+          if (a.blocks && a.blocks.length) {
+            // ブロック形式
+            contentHtml = a.blocks.map(b => {
+              if (b.type === 'text') {
+                const paras = (b.content || '').split(/\n\n+/).filter(Boolean)
+                  .map(p => `<p>${esc(p).replace(/\n/g,'<br>')}</p>`).join('');
+                return `<div class="blog-post-body">${paras}</div>`;
+              }
+              if (b.type === 'photo') {
+                return `<div class="blog-post-inline-photo">
+                  <img class="blog-post-photo" src="${esc(b.url)}" alt="" loading="lazy" onclick="openLightbox('${esc(b.url)}')" />
+                </div>`;
+              }
+              return '';
+            }).join('');
+          } else {
+            // 旧形式（body + photos）
+            const bodyHtml = (a.body || '').split(/\n\n+/).filter(Boolean)
+              .map(p => `<p>${esc(p).replace(/\n/g,'<br>')}</p>`).join('');
+            const photos = a.photos || [];
+            const photoCls = photos.length === 1 ? 'photos-1' : photos.length === 2 ? 'photos-2' : '';
+            const photoHtml = photos.length ? `<div class="blog-post-photos ${photoCls}">${
+              photos.map(p => `<img class="blog-post-photo" src="${esc(p)}" alt="" loading="lazy" onclick="openLightbox('${esc(p)}')" />`).join('')
+            }</div>` : '';
+            contentHtml = (bodyHtml ? `<div class="blog-post-body">${bodyHtml}</div>` : '') + photoHtml;
+          }
           return `
             <article class="blog-post fade-in">
               <div class="blog-post-meta">
                 <span class="blog-post-date">${esc(a.date)}</span>
               </div>
               <h3 class="blog-post-title">${esc(a.title)}</h3>
-              ${bodyHtml ? `<div class="blog-post-body">${bodyHtml}</div>` : ''}
-              ${photoHtml}
+              ${contentHtml}
             </article>`;
         }).join('');
 
