@@ -618,7 +618,19 @@
 
   async function writeGalleryJson(images, sha) {
     const b64 = btoa(unescape(encodeURIComponent(JSON.stringify({ images }, null, 2))));
-    await ghPut('data/gallery.json', b64, 'update: ギャラリー更新', sha);
+    try {
+      await ghPut('data/gallery.json', b64, 'update: ギャラリー更新', sha);
+    } catch (err) {
+      if (err.message && err.message.includes('does not match')) {
+        // SHA競合：最新SHAを取得してリトライ
+        const fresh = await readGalleryJson();
+        const merged = [...fresh.images, ...images.filter(n => !fresh.images.some(e => e.url === n.url))];
+        const b64r = btoa(unescape(encodeURIComponent(JSON.stringify({ images: merged }, null, 2))));
+        await ghPut('data/gallery.json', b64r, 'update: ギャラリー更新', fresh.sha);
+      } else {
+        throw err;
+      }
+    }
   }
 
   // ── お知らせ投稿（localStorage）─────────────────────────────────────────
@@ -699,12 +711,15 @@
     }
   }
 
-  async function addToGallery(file, caption) {
+  async function addToGalleryBatch(files, caption) {
     if (!localStorage.getItem(GH_TOKEN_KEY)) return;
-    const path = await uploadImageFile(file);
+    const paths = [];
+    for (const f of files) {
+      paths.push(await uploadImageFile(f));
+    }
     const { images, sha } = await readGalleryJson();
-    images.push({ url: path, caption: caption || '' });
-    await writeGalleryJson(images, sha);
+    const newEntries = paths.map(url => ({ url, caption: caption || '' }));
+    await writeGalleryJson([...images, ...newEntries], sha);
   }
 
   async function deleteGallery(index) {
@@ -832,9 +847,7 @@
     try {
       if (photoFiles.length > 0) {
         const caption = [item.date, item.title].filter(Boolean).join(' ');
-        for (const f of photoFiles) {
-          await addToGallery(f, caption);
-        }
+        await addToGalleryBatch(photoFiles, caption);
       }
       const items = loadAchievements();
       items.push(item);
