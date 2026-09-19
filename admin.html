@@ -1023,26 +1023,35 @@
     renderFilePreview(_achFiles, 'ach-preview-wrap', removeAchFile);
   }
 
-  // ── 活動実績 ─────────────────────────────────────────────────────────────
-  const ACH_KEY = 'fdb_achievements';
-
-  function loadAchievements() {
-    try { return JSON.parse(localStorage.getItem(ACH_KEY) || '[]'); }
-    catch { return []; }
+  // ── 活動実績（GitHub上の data/achievements.json を読み書き）────────────
+  async function readAchievementsJson() {
+    const data = await ghGet('data/achievements.json');
+    if (!data) return { achievements: [], sha: null };
+    try {
+      const raw = atob(data.content.replace(/\s/g, ''));
+      const obj = JSON.parse(decodeURIComponent(escape(raw)));
+      return { achievements: obj.achievements || [], sha: data.sha };
+    } catch { return { achievements: [], sha: data.sha }; }
   }
 
-  function saveAchievements(items) {
-    localStorage.setItem(ACH_KEY, JSON.stringify(items));
+  async function writeAchievementsJson(achievements, sha) {
+    const b64 = btoa(unescape(encodeURIComponent(JSON.stringify({ achievements }, null, 2))));
+    try {
+      await ghPut('data/achievements.json', b64, 'update: 活動実績更新', sha);
+    } catch (err) {
+      if (err.message && err.message.includes('does not match')) {
+        const { sha: freshSha } = await readAchievementsJson();
+        await ghPut('data/achievements.json', b64, 'update: 活動実績更新', freshSha);
+      } else { throw err; }
+    }
   }
 
-  function renderAchList() {
-    const items = loadAchievements();
-    const el    = document.getElementById('ach-list');
-    if (!items.length) {
+  function _paintAchList(el, achievements) {
+    if (!achievements.length) {
       el.innerHTML = '<p style="font-size:13px;color:var(--muted);padding:8px 0">まだ実績がありません</p>';
       return;
     }
-    el.innerHTML = items.map((item, i) => `
+    el.innerHTML = achievements.map((item, i) => `
       <div style="display:flex;align-items:flex-start;gap:8px;padding:12px 0;border-bottom:1px solid var(--border)">
         <div style="flex:1">
           <span style="font-size:11px;color:var(--muted)">${item.date || ''}　</span>
@@ -1062,18 +1071,32 @@
     `).join('');
   }
 
+  async function renderAchList(immediateAchievements) {
+    const el = document.getElementById('ach-list');
+    if (immediateAchievements) { _paintAchList(el, immediateAchievements); return; }
+    el.innerHTML = '<p style="font-size:13px;color:var(--muted);padding:8px 0">読み込み中...</p>';
+    try {
+      const { achievements } = await readAchievementsJson();
+      _paintAchList(el, achievements);
+    } catch {
+      el.innerHTML = '<p style="font-size:13px;color:var(--muted);padding:8px 0">（トークン未設定）</p>';
+    }
+  }
+
   function editAchievement(index) {
-    const items = loadAchievements();
-    const item  = items[index];
-    document.getElementById('ach-date').value     = item.date     || '';
-    document.getElementById('ach-category').value = item.category || '大会';
-    document.getElementById('ach-title').value    = item.title    || '';
-    document.getElementById('ach-desc').value     = item.desc     || '';
-    document.getElementById('ach-link').value     = item.link     || '';
-    document.getElementById('ach-edit-index').value = index;
-    document.querySelector('#btn-ach .btn-label').textContent = '更新する';
-    document.getElementById('btn-ach-cancel').style.display = '';
-    document.getElementById('ach-date').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    readAchievementsJson().then(({ achievements }) => {
+      const item = achievements[index];
+      if (!item) return;
+      document.getElementById('ach-date').value     = item.date     || '';
+      document.getElementById('ach-category').value = item.category || '大会';
+      document.getElementById('ach-title').value    = item.title    || '';
+      document.getElementById('ach-desc').value     = item.desc     || '';
+      document.getElementById('ach-link').value     = item.link     || '';
+      document.getElementById('ach-edit-index').value = index;
+      document.querySelector('#btn-ach .btn-label').textContent = '更新する';
+      document.getElementById('btn-ach-cancel').style.display = '';
+      document.getElementById('ach-date').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
   }
 
   function cancelEditAch() {
@@ -1111,18 +1134,18 @@
         const caption = [item.date, item.title].filter(Boolean).join(' ');
         await addToGalleryBatch(photoFiles, caption);
       }
-      const items = loadAchievements();
+      const { achievements, sha } = await readAchievementsJson();
       if (isEdit) {
-        items[parseInt(editIndex, 10)] = item;
+        achievements[parseInt(editIndex, 10)] = item;
       } else {
-        items.push(item);
+        achievements.push(item);
       }
-      saveAchievements(items);
-      renderAchList();
+      await writeAchievementsJson(achievements, sha);
+      renderAchList(achievements);
       cancelEditAch();
       const msg = isEdit
-        ? '活動実績を更新しました！'
-        : (photoFiles.length > 0 ? `活動実績を追加しました！（写真${photoFiles.length}枚をギャラリーに追加）` : '活動実績を追加しました！');
+        ? '活動実績を更新しました！（サイトへの反映に1〜3分かかります）'
+        : (photoFiles.length > 0 ? `活動実績を追加しました！（写真${photoFiles.length}枚をギャラリーに追加）` : '活動実績を追加しました！（サイトへの反映に1〜3分かかります）');
       showToast(msg, 'success');
     } catch (err) {
       showToast('エラー: ' + err.message, 'error');
@@ -1131,12 +1154,15 @@
     }
   }
 
-  function deleteAchievement(index) {
-    const items = loadAchievements();
-    items.splice(index, 1);
-    saveAchievements(items);
-    renderAchList();
-    showToast('削除しました', '');
+  async function deleteAchievement(index) {
+    if (!confirm('この実績を削除しますか？')) return;
+    try {
+      const { achievements, sha } = await readAchievementsJson();
+      achievements.splice(index, 1);
+      await writeAchievementsJson(achievements, sha);
+      renderAchList(achievements);
+      showToast('削除しました', '');
+    } catch (err) { showToast('エラー: ' + err.message, 'error'); }
   }
 
   // ── UI ユーティリティ ────────────────────────────────────────────────────

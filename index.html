@@ -628,49 +628,34 @@
       `).join('');
     }
 
-    // 活動実績：デフォルトデータ（初回のみ localStorage に保存）
-    const ACH_DEFAULTS = [
-      { date:'2022年11月', category:'大会',    title:'佐賀インターナショナルバルーンフェスタ',             desc:'ボランティアスタッフとして参加。気球競技の世界を内側から体験。' },
-      { date:'2023年',     category:'大会',    title:'全日本学生選手権（宮崎）',                           desc:'計測班スタッフとして参加。' },
-      { date:'2023年',     category:'活動',    title:'サークル初の所有機体誕生',                           desc:'気球「赤丸」を譲り受け、部員全員で修理。自分たちの機体が生まれた。' },
-      { date:'2024年4月',  category:'活動',    title:'新入部員20名加入',                                   desc:'廃部の危機を乗り越え、サークルの基盤が整う。' },
-      { date:'2025年2月',  category:'大会',    title:'北海道ウィンターバルーンミーティング',               desc:'メンバー12名で上士幌へ遠征。雪上での競技を全員で経験。' },
-      { date:'2025年12月', category:'その他',  title:'サークル初パイロットライセンス取得（中川）',         desc:'パイロット免許を取得。' },
-      { date:'2026年3月',  category:'大会',    title:'阿蘇バルーンミーティング 優勝（中川）',             desc:'ライセンス取得からわずか3ヶ月で優勝。' },
-      { date:'2026年4月',  category:'活動',    title:'新入部員40名加入・総勢50名超',                       desc:'サークルの本格的な基盤が完成。' },
-      { date:'2026年4月',  category:'その他',  title:'クラウドファンディング達成（113%）',                 desc:'目的：活動用ハイエース購入\n支援総額682,944円・支援者71名', link:'https://camp-fire.jp/projects/931656/view' },
-      { date:'2026年8月',  category:'大会',    title:'北海道バルーンフェスティバル　参加',                 desc:'サークル初、学生のみでのエントリー。大会出場' },
-    ];
-    if (!localStorage.getItem('fdb_ach_initialized')) {
-      localStorage.setItem('fdb_achievements', JSON.stringify(ACH_DEFAULTS));
-      localStorage.setItem('fdb_ach_initialized', '1');
-    }
-
-    // 活動実績を localStorage から読み込む
-    (function () {
-      let items;
-      try { items = JSON.parse(localStorage.getItem('fdb_achievements') || '[]'); }
-      catch { items = []; }
-      if (!items.length) return;
-      const section = document.getElementById('achievements');
-      const list    = document.getElementById('achievements-list');
-      section.style.display = 'block';
-      const CATEGORY_COLOR = { '大会': '#e8842a', 'フライト': '#2d9cdb', '活動': '#27ae60', 'その他': '#8a6a50' };
-      list.innerHTML = items.map(item => {
-        const color = CATEGORY_COLOR[item.category] || '#8a6a50';
-        const esc   = s => (s || '').replace(/</g,'&lt;');
-        return `
-          <div class="ach-card fade-in">
-            <div class="ach-date">${esc(item.date)}</div>
-            <div class="ach-body">
-              ${item.category ? `<span class="ach-badge" style="background:${color}">${esc(item.category)}</span>` : ''}
-              <div class="ach-title">${esc(item.title)}</div>
-              ${item.desc ? `<div class="ach-desc">${esc(item.desc).replace(/\n/g,'<br>')}</div>` : ''}
-              ${item.link ? `<a href="${esc(item.link)}" class="ach-link" target="_blank" rel="noopener">詳細を見る →</a>` : ''}
-            </div>
-          </div>`;
-      }).join('');
-      document.querySelectorAll('.ach-card.fade-in').forEach(el => fadeObserver.observe(el));
+    // 活動実績をdata/achievements.jsonから読み込む
+    (async function achievementsInit() {
+      try {
+        const resp = await fetch('data/achievements.json?v=' + Date.now());
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const items = data.achievements || [];
+        if (!items.length) return;
+        const section = document.getElementById('achievements');
+        const list    = document.getElementById('achievements-list');
+        section.style.display = 'block';
+        const CATEGORY_COLOR = { '大会': '#e8842a', 'フライト': '#2d9cdb', '活動': '#27ae60', 'その他': '#8a6a50' };
+        list.innerHTML = items.map(item => {
+          const color = CATEGORY_COLOR[item.category] || '#8a6a50';
+          const esc   = s => (s || '').replace(/</g,'&lt;');
+          return `
+            <div class="ach-card fade-in">
+              <div class="ach-date">${esc(item.date)}</div>
+              <div class="ach-body">
+                ${item.category ? `<span class="ach-badge" style="background:${color}">${esc(item.category)}</span>` : ''}
+                <div class="ach-title">${esc(item.title)}</div>
+                ${item.desc ? `<div class="ach-desc">${esc(item.desc).replace(/\n/g,'<br>')}</div>` : ''}
+                ${item.link ? `<a href="${esc(item.link)}" class="ach-link" target="_blank" rel="noopener">詳細を見る →</a>` : ''}
+              </div>
+            </div>`;
+        }).join('');
+        document.querySelectorAll('.ach-card.fade-in').forEach(el => fadeObserver.observe(el));
+      } catch (e) { /* silently fail */ }
     })();
 
     // お知らせをlocalStorageから読み込む
