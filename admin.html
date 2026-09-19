@@ -831,12 +831,16 @@
   async function renderArtList(immediateArticles) {
     const el = document.getElementById('art-list');
     if (immediateArticles) { _paintArtList(el, immediateArticles); return; }
+    if (!localStorage.getItem(GH_TOKEN_KEY)) {
+      el.innerHTML = '<p style="font-size:13px;color:var(--muted);padding:8px 0">（トークン未設定）</p>';
+      return;
+    }
     el.innerHTML = '<p style="font-size:13px;color:var(--muted);padding:8px 0">読み込み中...</p>';
     try {
       const { articles } = await readArticlesJson();
       _paintArtList(el, articles);
     } catch {
-      el.innerHTML = '<p style="font-size:13px;color:var(--muted);padding:8px 0">（トークン未設定）</p>';
+      el.innerHTML = '<p style="font-size:13px;color:var(--muted);padding:8px 0">（読み込みエラー）</p>';
     }
   }
 
@@ -944,6 +948,10 @@
 
   async function renderGalleryList() {
     const el = document.getElementById('gallery-list');
+    if (!localStorage.getItem(GH_TOKEN_KEY)) {
+      el.innerHTML = '<p style="font-size:13px;color:var(--muted);padding:8px 0">（トークン未設定）</p>';
+      return;
+    }
     el.innerHTML = '<p style="font-size:13px;color:var(--muted);padding:8px 0">読み込み中...</p>';
     try {
       const { images } = await readGalleryJson();
@@ -1074,12 +1082,16 @@
   async function renderAchList(immediateAchievements) {
     const el = document.getElementById('ach-list');
     if (immediateAchievements) { _paintAchList(el, immediateAchievements); return; }
+    if (!localStorage.getItem(GH_TOKEN_KEY)) {
+      el.innerHTML = '<p style="font-size:13px;color:var(--muted);padding:8px 0">（トークン未設定）</p>';
+      return;
+    }
     el.innerHTML = '<p style="font-size:13px;color:var(--muted);padding:8px 0">読み込み中...</p>';
     try {
       const { achievements } = await readAchievementsJson();
       _paintAchList(el, achievements);
     } catch {
-      el.innerHTML = '<p style="font-size:13px;color:var(--muted);padding:8px 0">（トークン未設定）</p>';
+      el.innerHTML = '<p style="font-size:13px;color:var(--muted);padding:8px 0">（読み込みエラー）</p>';
     }
   }
 
