@@ -387,6 +387,30 @@
       <p class="gas-status" id="gh-status"></p>
     </div>
 
+    <!-- TOPの背景 -->
+    <div class="card">
+      <div class="card-title">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        TOPの背景
+      </div>
+      <p class="card-desc">サイトのトップ画面の背景を写真（JPEG・PNG・WebP）または動画（MP4）に変更できます。動画は30MB以下を推奨します。</p>
+      <div id="hero-current" style="margin-bottom:16px;font-size:12px;color:var(--muted)">読み込み中...</div>
+      <form class="form-row" onsubmit="submitHero(event)">
+        <div class="form-group">
+          <label>ファイルを選択 <span class="req">*</span></label>
+          <input type="file" id="hero-file" accept="image/*,video/mp4,video/quicktime"
+                 onchange="previewHeroFile(this)" style="padding:8px 14px;cursor:pointer" />
+          <div id="hero-preview-wrap" style="margin-top:8px"></div>
+        </div>
+        <div>
+          <button type="submit" class="btn-submit" id="btn-hero">
+            <div class="spinner"></div>
+            <span class="btn-label">変更する</span>
+          </button>
+        </div>
+      </form>
+    </div>
+
     <!-- お知らせ投稿 -->
     <div class="card">
       <div class="card-title">
@@ -602,6 +626,7 @@
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('admin-screen').style.display = 'block';
     loadGhToken();
+    renderHeroCurrent();
     renderAchList();
     renderGalleryList();
     renderArtList();
@@ -658,6 +683,116 @@
       throw new Error(e.message || `GitHub API error ${resp.status}`);
     }
     return resp.json();
+  }
+
+  // ── ヒーロー背景（GitHub上の data/hero.json を読み書き）──────────────
+  async function readHeroJson() {
+    const data = await ghGet('data/hero.json');
+    if (!data) return { type: 'image', url: 'images/group.jpg', sha: null };
+    try {
+      const raw = atob(data.content.replace(/\s/g, ''));
+      const obj = JSON.parse(decodeURIComponent(escape(raw)));
+      return { type: obj.type || 'image', url: obj.url || 'images/group.jpg', sha: data.sha };
+    } catch { return { type: 'image', url: 'images/group.jpg', sha: data.sha }; }
+  }
+
+  async function writeHeroJson(type, url, sha) {
+    const b64 = btoa(unescape(encodeURIComponent(JSON.stringify({ type, url }, null, 2))));
+    try {
+      await ghPut('data/hero.json', b64, 'update: ヒーロー背景更新', sha);
+    } catch (err) {
+      if (err.message && err.message.includes('does not match')) {
+        const { sha: freshSha } = await readHeroJson();
+        await ghPut('data/hero.json', b64, 'update: ヒーロー背景更新', freshSha);
+      } else { throw err; }
+    }
+  }
+
+  async function renderHeroCurrent() {
+    const el = document.getElementById('hero-current');
+    if (!localStorage.getItem(GH_TOKEN_KEY)) {
+      el.innerHTML = '（トークン未設定）';
+      return;
+    }
+    try {
+      const { type, url } = await readHeroJson();
+      if (type === 'video') {
+        el.innerHTML = `現在の背景: <strong>動画</strong>（${url}）`;
+      } else {
+        el.innerHTML = `<div style="display:flex;align-items:center;gap:10px">
+          <img src="${url}" style="width:80px;height:50px;object-fit:cover;border-radius:6px;border:1px solid var(--border)" onerror="this.style.opacity='0.3'" />
+          <span>現在の背景: <strong>写真</strong></span>
+        </div>`;
+      }
+    } catch { el.innerHTML = '（読み込みエラー）'; }
+  }
+
+  function previewHeroFile(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const wrap = document.getElementById('hero-preview-wrap');
+    if (file.type.startsWith('video/')) {
+      const url = URL.createObjectURL(file);
+      const mb = (file.size / 1024 / 1024).toFixed(1);
+      const warn = file.size > 30 * 1024 * 1024
+        ? `<p style="color:var(--error);font-size:11px;margin-top:4px">⚠ ${mb}MB — 大きめです。アップロードに時間がかかることがあります。</p>`
+        : `<p style="font-size:11px;color:var(--muted);margin-top:4px">${mb}MB</p>`;
+      wrap.innerHTML = `<video src="${url}" style="max-width:200px;max-height:130px;border-radius:6px;border:1.5px solid var(--border)" muted controls></video>${warn}`;
+    } else {
+      const reader = new FileReader();
+      reader.onload = e => {
+        wrap.innerHTML = `<img src="${e.target.result}" style="max-width:200px;max-height:130px;border-radius:6px;border:1.5px solid var(--border);object-fit:cover" />`;
+      };
+      reader.readAsDataURL(file);
+    }
+  }
+
+  async function uploadVideoFile(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = async e => {
+        try {
+          const b64  = e.target.result.split(',')[1];
+          const safe = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+          const path = `images/hero/${Date.now()}_${safe}`;
+          await ghPut(path, b64, `add: ヒーロー動画 ${safe}`);
+          resolve(path);
+        } catch (err) { reject(err); }
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function submitHero(e) {
+    e.preventDefault();
+    const file = document.getElementById('hero-file').files[0];
+    if (!file) { showToast('ファイルを選択してください', 'error'); return; }
+    if (!localStorage.getItem(GH_TOKEN_KEY)) {
+      showToast('GitHubトークンを先に設定してください', 'error'); return;
+    }
+    const btn = document.getElementById('btn-hero');
+    setLoading(btn, true);
+    try {
+      let url, type;
+      if (file.type.startsWith('video/')) {
+        url  = await uploadVideoFile(file);
+        type = 'video';
+      } else {
+        url  = await uploadImageFile(file);
+        type = 'image';
+      }
+      const { sha } = await readHeroJson();
+      await writeHeroJson(type, url, sha);
+      document.getElementById('hero-file').value = '';
+      document.getElementById('hero-preview-wrap').innerHTML = '';
+      renderHeroCurrent();
+      showToast('TOPの背景を変更しました！（サイトへの反映に1〜3分かかります）', 'success');
+    } catch (err) {
+      showToast('エラー: ' + err.message, 'error');
+    } finally {
+      setLoading(btn, false);
+    }
   }
 
   async function readGalleryJson() {

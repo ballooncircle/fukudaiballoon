@@ -99,8 +99,8 @@
 
   <!-- Hero Section -->
   <section class="hero" id="hero">
-    <div class="hero-bg"></div>
-    <div class="hero-overlay"></div>
+    <div class="hero-bg" id="hero-bg"></div>
+    <div class="hero-overlay" id="hero-overlay"></div>
     <div class="hero-content">
       <p class="hero-sub">Fukuoka University Hot Air Balloon Club</p>
       <h1 class="hero-title">福岡発、令和4年創設、<br />日本一新しい学生気球チーム。</h1>
@@ -656,6 +656,31 @@
         }).join('');
         document.querySelectorAll('.ach-card.fade-in').forEach(el => fadeObserver.observe(el));
       } catch (e) { /* silently fail */ }
+    })();
+
+    // TOPの背景をdata/hero.jsonから読み込む
+    (async function heroInit() {
+      try {
+        const resp = await fetch('data/hero.json?v=' + Date.now());
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (!data.url) return;
+        const heroBg = document.getElementById('hero-bg');
+        if (data.type === 'video') {
+          heroBg.style.display = 'none';
+          const vid = document.createElement('video');
+          vid.autoplay = true; vid.muted = true; vid.loop = true;
+          vid.setAttribute('playsinline', '');
+          vid.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0';
+          const src = document.createElement('source');
+          src.src = data.url;
+          src.type = data.url.match(/\.mov$/i) ? 'video/quicktime' : 'video/mp4';
+          vid.appendChild(src);
+          document.getElementById('hero').insertBefore(vid, document.getElementById('hero-overlay'));
+        } else {
+          heroBg.style.backgroundImage = `url('${data.url}')`;
+        }
+      } catch (e) {}
     })();
 
     // お知らせをlocalStorageから読み込む
