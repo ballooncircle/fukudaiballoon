@@ -493,10 +493,15 @@
           <label>リンク（省略可）</label>
           <input type="url" id="ach-link" placeholder="https://..." />
         </div>
-        <div>
+        <input type="hidden" id="ach-edit-index" value="" />
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
           <button type="submit" class="btn-submit" id="btn-ach">
             <div class="spinner"></div>
             <span class="btn-label">追加する</span>
+          </button>
+          <button type="button" id="btn-ach-cancel" onclick="cancelEditAch()"
+            style="display:none;padding:10px 20px;border:1px solid var(--border);border-radius:8px;background:none;font-size:14px;color:var(--muted);cursor:pointer">
+            キャンセル
           </button>
         </div>
       </form>
@@ -836,13 +841,17 @@
       return;
     }
     el.innerHTML = items.map((item, i) => `
-      <div style="display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:flex-start;gap:8px;padding:12px 0;border-bottom:1px solid var(--border)">
         <div style="flex:1">
           <span style="font-size:11px;color:var(--muted)">${item.date || ''}　</span>
           <span style="font-size:11px;background:var(--primary);color:#fff;padding:1px 8px;border-radius:12px">${item.category || ''}</span>
           <div style="font-size:13px;font-weight:500;color:var(--text);margin-top:4px">${item.title || ''}</div>
           ${item.desc ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${item.desc.replace(/\n/g,'<br>')}</div>` : ''}
         </div>
+        <button onclick="editAchievement(${i})"
+          style="background:none;border:1px solid var(--primary);border-radius:6px;padding:4px 10px;font-size:11px;color:var(--primary);cursor:pointer;white-space:nowrap;flex-shrink:0">
+          編集
+        </button>
         <button onclick="deleteAchievement(${i})"
           style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:11px;color:var(--muted);cursor:pointer;white-space:nowrap;flex-shrink:0">
           削除
@@ -851,9 +860,39 @@
     `).join('');
   }
 
+  function editAchievement(index) {
+    const items = loadAchievements();
+    const item  = items[index];
+    document.getElementById('ach-date').value     = item.date     || '';
+    document.getElementById('ach-category').value = item.category || '大会';
+    document.getElementById('ach-title').value    = item.title    || '';
+    document.getElementById('ach-desc').value     = item.desc     || '';
+    document.getElementById('ach-link').value     = item.link     || '';
+    document.getElementById('ach-edit-index').value = index;
+    document.querySelector('#btn-ach .btn-label').textContent = '更新する';
+    document.getElementById('btn-ach-cancel').style.display = '';
+    document.getElementById('ach-date').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function cancelEditAch() {
+    document.getElementById('ach-date').value     = '';
+    document.getElementById('ach-category').value = '大会';
+    document.getElementById('ach-title').value    = '';
+    document.getElementById('ach-desc').value     = '';
+    document.getElementById('ach-link').value     = '';
+    _achFiles = [];
+    document.getElementById('ach-photo').value = '';
+    document.getElementById('ach-preview-wrap').innerHTML = '';
+    document.getElementById('ach-edit-index').value = '';
+    document.querySelector('#btn-ach .btn-label').textContent = '追加する';
+    document.getElementById('btn-ach-cancel').style.display = 'none';
+  }
+
   async function submitAchievement(e) {
     e.preventDefault();
-    const photoFiles = _achFiles.slice();
+    const photoFiles  = _achFiles.slice();
+    const editIndex   = document.getElementById('ach-edit-index').value;
+    const isEdit      = editIndex !== '';
     const item = {
       date:     document.getElementById('ach-date').value.trim(),
       category: document.getElementById('ach-category').value,
@@ -871,19 +910,17 @@
         await addToGalleryBatch(photoFiles, caption);
       }
       const items = loadAchievements();
-      items.push(item);
+      if (isEdit) {
+        items[parseInt(editIndex, 10)] = item;
+      } else {
+        items.push(item);
+      }
       saveAchievements(items);
       renderAchList();
-      document.getElementById('ach-date').value  = '';
-      document.getElementById('ach-title').value = '';
-      document.getElementById('ach-desc').value  = '';
-      _achFiles = [];
-      document.getElementById('ach-photo').value = '';
-      document.getElementById('ach-link').value  = '';
-      document.getElementById('ach-preview-wrap').innerHTML = '';
-      const msg = photoFiles.length > 0
-        ? `活動実績を追加しました！（写真${photoFiles.length}枚をギャラリーに追加）`
-        : '活動実績を追加しました！';
+      cancelEditAch();
+      const msg = isEdit
+        ? '活動実績を更新しました！'
+        : (photoFiles.length > 0 ? `活動実績を追加しました！（写真${photoFiles.length}枚をギャラリーに追加）` : '活動実績を追加しました！');
       showToast(msg, 'success');
     } catch (err) {
       showToast('エラー: ' + err.message, 'error');
