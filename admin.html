@@ -426,7 +426,7 @@
       <form class="form-row" onsubmit="submitGallery(event)" style="margin-bottom:28px">
         <div class="form-group">
           <label>写真ファイル <span class="req">*</span></label>
-          <input type="file" id="gallery-file" accept="image/*" required multiple
+          <input type="file" id="gallery-file" accept="image/*" multiple
                  onchange="previewGalleryFiles(this)" style="padding:8px 14px;cursor:pointer" />
         </div>
         <div id="gallery-preview-wrap" style="display:flex;flex-wrap:wrap;gap:8px"></div>
@@ -683,9 +683,9 @@
   async function submitGallery(e) {
     e.preventDefault();
     const btn     = document.getElementById('btn-gallery');
-    const files   = Array.from(document.getElementById('gallery-file').files);
+    const files   = _galleryFiles.slice();
     const caption = document.getElementById('gallery-caption').value.trim();
-    if (!files.length) return;
+    if (!files.length) { showToast('写真を選択してください', 'error'); return; }
     if (!localStorage.getItem(GH_TOKEN_KEY)) {
       showToast('GitHubトークンを先に設定してください', 'error'); return;
     }
@@ -699,6 +699,7 @@
       const { images, sha } = await readGalleryJson();
       const newEntries = paths.map(url => ({ url, caption }));
       await writeGalleryJson([...images, ...newEntries], sha);
+      _galleryFiles = [];
       document.getElementById('gallery-file').value    = '';
       document.getElementById('gallery-caption').value = '';
       document.getElementById('gallery-preview-wrap').innerHTML = '';
@@ -765,34 +766,54 @@
     }
   }
 
-  function previewGalleryFiles(input) {
-    const wrap = document.getElementById('gallery-preview-wrap');
+  let _galleryFiles = [];
+  let _achFiles     = [];
+
+  function renderFilePreview(files, wrapId, removeFn) {
+    const wrap = document.getElementById(wrapId);
     wrap.innerHTML = '';
-    Array.from(input.files).forEach(file => {
+    files.forEach((file, i) => {
       const reader = new FileReader();
       reader.onload = e => {
+        const div = document.createElement('div');
+        div.style.cssText = 'position:relative;display:inline-block;flex-shrink:0';
         const img = document.createElement('img');
         img.src = e.target.result;
-        img.style.cssText = 'width:72px;height:52px;object-fit:cover;border-radius:6px;border:1.5px solid var(--border)';
-        wrap.appendChild(img);
+        img.style.cssText = 'width:72px;height:52px;object-fit:cover;border-radius:6px;border:1.5px solid var(--border);display:block';
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = '×';
+        btn.title = '選択解除';
+        btn.style.cssText = 'position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:#c62828;color:#fff;border:none;font-size:13px;line-height:20px;cursor:pointer;padding:0;text-align:center;font-weight:bold';
+        btn.onclick = () => removeFn(i);
+        div.appendChild(img);
+        div.appendChild(btn);
+        wrap.appendChild(div);
       };
       reader.readAsDataURL(file);
     });
   }
 
+  function removeGalleryFile(idx) {
+    _galleryFiles.splice(idx, 1);
+    renderFilePreview(_galleryFiles, 'gallery-preview-wrap', removeGalleryFile);
+  }
+
+  function removeAchFile(idx) {
+    _achFiles.splice(idx, 1);
+    renderFilePreview(_achFiles, 'ach-preview-wrap', removeAchFile);
+  }
+
+  function previewGalleryFiles(input) {
+    _galleryFiles = [..._galleryFiles, ...Array.from(input.files)];
+    input.value = '';
+    renderFilePreview(_galleryFiles, 'gallery-preview-wrap', removeGalleryFile);
+  }
+
   function previewAchFiles(input) {
-    const wrap = document.getElementById('ach-preview-wrap');
-    wrap.innerHTML = '';
-    Array.from(input.files).forEach(file => {
-      const reader = new FileReader();
-      reader.onload = e => {
-        const img = document.createElement('img');
-        img.src = e.target.result;
-        img.style.cssText = 'width:72px;height:52px;object-fit:cover;border-radius:6px;border:1.5px solid var(--border)';
-        wrap.appendChild(img);
-      };
-      reader.readAsDataURL(file);
-    });
+    _achFiles = [..._achFiles, ...Array.from(input.files)];
+    input.value = '';
+    renderFilePreview(_achFiles, 'ach-preview-wrap', removeAchFile);
   }
 
   // ── 活動実績 ─────────────────────────────────────────────────────────────
@@ -832,7 +853,7 @@
 
   async function submitAchievement(e) {
     e.preventDefault();
-    const photoFiles = Array.from(document.getElementById('ach-photo').files);
+    const photoFiles = _achFiles.slice();
     const item = {
       date:     document.getElementById('ach-date').value.trim(),
       category: document.getElementById('ach-category').value,
@@ -856,6 +877,7 @@
       document.getElementById('ach-date').value  = '';
       document.getElementById('ach-title').value = '';
       document.getElementById('ach-desc').value  = '';
+      _achFiles = [];
       document.getElementById('ach-photo').value = '';
       document.getElementById('ach-link').value  = '';
       document.getElementById('ach-preview-wrap').innerHTML = '';
