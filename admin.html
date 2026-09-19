@@ -616,7 +616,9 @@
     const data = await ghGet('data/gallery.json');
     if (!data) return { images: [], sha: null };
     try {
-      const obj = JSON.parse(atob(data.content.replace(/\s/g, '')));
+      const raw = atob(data.content.replace(/\s/g, ''));
+      const json = decodeURIComponent(escape(raw));
+      const obj = JSON.parse(json);
       return { images: obj.images || [], sha: data.sha };
     } catch { return { images: [], sha: data.sha }; }
   }
