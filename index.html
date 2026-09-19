@@ -79,6 +79,7 @@
         <li><a href="#activities">活動内容</a></li>
         <li><a href="#balloon">所有気球</a></li>
         <li><a href="#sponsor">スポンサー</a></li>
+        <li><a href="#blog">活動ブログ</a></li>
         <li><a href="#achievements">活動実績</a></li>
         <li><a href="#gallery">ギャラリー</a></li>
         <li><a href="#contact">お問い合わせ</a></li>
@@ -293,6 +294,24 @@
       </div>
     </div>
   </section>
+
+  <!-- Blog Section -->
+  <section class="blog" id="blog" style="display:none">
+    <div class="container">
+      <div class="section-header fade-in">
+        <p class="section-label">Blog</p>
+        <h2 class="section-title">活動ブログ</h2>
+        <div class="gold-line"></div>
+      </div>
+      <div class="blog-feed" id="blog-feed"></div>
+    </div>
+  </section>
+
+  <!-- Lightbox -->
+  <div id="blog-lightbox" onclick="closeLightbox()">
+    <span id="blog-lightbox-close">&times;</span>
+    <img id="blog-lightbox-img" src="" alt="" onclick="event.stopPropagation()" />
+  </div>
 
   <!-- Gallery Section (shown only when images set via admin) -->
   <section class="gallery" id="gallery" style="display:none">
@@ -704,6 +723,53 @@
         btn.textContent = `もっと見る（あと${_galleryAll.length - GALLERY_INITIAL}枚）`;
         document.getElementById('gallery-more-wrap').style.display = 'block';
       }
+    })();
+
+    // ブログをdata/articles.jsonから読み込む
+    function openLightbox(src) {
+      document.getElementById('blog-lightbox-img').src = src;
+      document.getElementById('blog-lightbox').classList.add('open');
+      document.body.style.overflow = 'hidden';
+    }
+    function closeLightbox() {
+      document.getElementById('blog-lightbox').classList.remove('open');
+      document.body.style.overflow = '';
+    }
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
+
+    (async function blogInit() {
+      try {
+        const resp = await fetch('data/articles.json?v=' + Date.now());
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const articles = data.articles || [];
+        if (!articles.length) return;
+
+        document.getElementById('blog').style.display = 'block';
+        const esc = s => (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+        const feed = document.getElementById('blog-feed');
+        feed.innerHTML = articles.map(a => {
+          const photos = a.photos || [];
+          const photoCls = photos.length === 1 ? 'photos-1' : photos.length === 2 ? 'photos-2' : '';
+          const photoHtml = photos.length ? `
+            <div class="blog-post-photos ${photoCls}">
+              ${photos.map(p => `<img class="blog-post-photo" src="${esc(p)}" alt="" loading="lazy" onclick="openLightbox('${esc(p)}')" />`).join('')}
+            </div>` : '';
+          const bodyHtml = (a.body || '').split(/\n\n+/).filter(Boolean)
+            .map(p => `<p>${esc(p).replace(/\n/g,'<br>')}</p>`).join('');
+          return `
+            <article class="blog-post fade-in">
+              <div class="blog-post-meta">
+                <span class="blog-post-date">${esc(a.date)}</span>
+              </div>
+              <h3 class="blog-post-title">${esc(a.title)}</h3>
+              ${bodyHtml ? `<div class="blog-post-body">${bodyHtml}</div>` : ''}
+              ${photoHtml}
+            </article>`;
+        }).join('');
+
+        feed.querySelectorAll('.blog-post.fade-in').forEach(el => fadeObserver.observe(el));
+      } catch (e) { /* silently fail */ }
     })();
   </script>
 </body>

@@ -416,6 +416,53 @@
       </form>
     </div>
 
+    <!-- ブログ記事 -->
+    <div class="card">
+      <div class="card-title">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        活動ブログ
+      </div>
+      <p class="card-desc">記事を投稿するとサイトの「活動ブログ」セクションに表示されます。写真はギャラリーにも自動追加されます。</p>
+
+      <form class="form-row" onsubmit="submitArticle(event)" style="margin-bottom:28px">
+        <div class="form-group">
+          <label>日付</label>
+          <input type="text" id="art-date" placeholder="例：2026年8月" />
+        </div>
+        <div class="form-group">
+          <label>タイトル <span class="req">*</span></label>
+          <input type="text" id="art-title" placeholder="例：第53回北海道バルーンフェスティバル" required />
+        </div>
+        <div class="form-group">
+          <label>本文</label>
+          <textarea id="art-body" rows="8" placeholder="記事の本文を入力してください。空行で段落が分かれます。"></textarea>
+        </div>
+        <div class="form-group">
+          <label>写真ファイル（複数選択可）</label>
+          <input type="file" id="art-photo" accept="image/*" multiple
+                 onchange="previewArtFiles(this)" style="padding:8px 14px;cursor:pointer" />
+          <div id="art-preview-wrap" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"></div>
+          <p style="font-size:11px;color:var(--muted);margin-top:4px">アップロードするとギャラリーにも自動追加されます</p>
+        </div>
+        <input type="hidden" id="art-edit-index" value="" />
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <button type="submit" class="btn-submit" id="btn-art">
+            <div class="spinner"></div>
+            <span class="btn-label">投稿する</span>
+          </button>
+          <button type="button" id="btn-art-cancel" onclick="cancelEditArt()"
+            style="display:none;padding:10px 20px;border:1px solid var(--border);border-radius:8px;background:none;font-size:14px;color:var(--muted);cursor:pointer">
+            キャンセル
+          </button>
+        </div>
+      </form>
+
+      <div id="art-list-wrap">
+        <p style="font-size:12px;font-weight:500;color:var(--muted);margin-bottom:10px;letter-spacing:0.05em">投稿済み記事</p>
+        <div id="art-list"></div>
+      </div>
+    </div>
+
     <!-- ギャラリー管理 -->
     <div class="card">
       <div class="card-title">
@@ -557,6 +604,7 @@
     loadGhToken();
     renderAchList();
     renderGalleryList();
+    renderArtList();
   }
 
   // ── GitHub設定 ───────────────────────────────────────────────────────────
@@ -637,6 +685,157 @@
       } else {
         throw err;
       }
+    }
+  }
+
+  // ── ブログ記事（GitHub上の data/articles.json を読み書き）──────────────
+  async function readArticlesJson() {
+    const data = await ghGet('data/articles.json');
+    if (!data) return { articles: [], sha: null };
+    try {
+      const raw = atob(data.content.replace(/\s/g, ''));
+      const obj = JSON.parse(decodeURIComponent(escape(raw)));
+      return { articles: obj.articles || [], sha: data.sha };
+    } catch { return { articles: [], sha: data.sha }; }
+  }
+
+  async function writeArticlesJson(articles, sha) {
+    const b64 = btoa(unescape(encodeURIComponent(JSON.stringify({ articles }, null, 2))));
+    try {
+      await ghPut('data/articles.json', b64, 'update: ブログ記事更新', sha);
+    } catch (err) {
+      if (err.message && err.message.includes('does not match')) {
+        const fresh = await readArticlesJson();
+        const b64r = btoa(unescape(encodeURIComponent(JSON.stringify({ articles }, null, 2))));
+        await ghPut('data/articles.json', b64r, 'update: ブログ記事更新', fresh.sha);
+      } else { throw err; }
+    }
+  }
+
+  let _artFiles = [];
+
+  function removeArtFile(idx) {
+    _artFiles.splice(idx, 1);
+    renderFilePreview(_artFiles, 'art-preview-wrap', removeArtFile);
+  }
+
+  function previewArtFiles(input) {
+    _artFiles = [..._artFiles, ...Array.from(input.files)];
+    input.value = '';
+    renderFilePreview(_artFiles, 'art-preview-wrap', removeArtFile);
+  }
+
+  function cancelEditArt() {
+    document.getElementById('art-date').value  = '';
+    document.getElementById('art-title').value = '';
+    document.getElementById('art-body').value  = '';
+    _artFiles = [];
+    document.getElementById('art-photo').value = '';
+    document.getElementById('art-preview-wrap').innerHTML = '';
+    document.getElementById('art-edit-index').value = '';
+    document.querySelector('#btn-art .btn-label').textContent = '投稿する';
+    document.getElementById('btn-art-cancel').style.display = 'none';
+  }
+
+  function editArticle(index) {
+    readArticlesJson().then(({ articles }) => {
+      const a = articles[index];
+      if (!a) return;
+      document.getElementById('art-date').value  = a.date  || '';
+      document.getElementById('art-title').value = a.title || '';
+      document.getElementById('art-body').value  = a.body  || '';
+      document.getElementById('art-edit-index').value = index;
+      document.querySelector('#btn-art .btn-label').textContent = '更新する';
+      document.getElementById('btn-art-cancel').style.display = '';
+      document.getElementById('art-date').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }
+
+  async function deleteArticle(index) {
+    if (!confirm('この記事を削除しますか？')) return;
+    try {
+      const { articles, sha } = await readArticlesJson();
+      articles.splice(index, 1);
+      await writeArticlesJson(articles, sha);
+      renderArtList();
+      showToast('削除しました', '');
+    } catch (err) { showToast('エラー: ' + err.message, 'error'); }
+  }
+
+  async function submitArticle(e) {
+    e.preventDefault();
+    const photoFiles = _artFiles.slice();
+    const editIndexVal = document.getElementById('art-edit-index').value;
+    const isEdit = editIndexVal !== '';
+    const entry = {
+      id:     Date.now().toString(),
+      date:   document.getElementById('art-date').value.trim(),
+      title:  document.getElementById('art-title').value.trim(),
+      body:   document.getElementById('art-body').value.trim(),
+      photos: []
+    };
+    if (!entry.title) return;
+
+    const btn = document.getElementById('btn-art');
+    setLoading(btn, true);
+    try {
+      if (photoFiles.length > 0) {
+        const paths = [];
+        for (const f of photoFiles) paths.push(await uploadImageFile(f));
+        entry.photos = paths;
+        const { images, sha: galSha } = await readGalleryJson();
+        const caption = [entry.date, entry.title].filter(Boolean).join(' ');
+        await writeGalleryJson([...images, ...paths.map(url => ({ url, caption }))], galSha);
+      }
+
+      const { articles, sha } = await readArticlesJson();
+      if (isEdit) {
+        const idx = parseInt(editIndexVal, 10);
+        entry.id = articles[idx].id || entry.id;
+        entry.photos = [...(articles[idx].photos || []), ...entry.photos];
+        articles[idx] = entry;
+      } else {
+        articles.unshift(entry);
+      }
+      await writeArticlesJson(articles, sha);
+      renderArtList();
+      cancelEditArt();
+      showToast(isEdit ? '記事を更新しました！' : '記事を投稿しました！（数秒で反映）', 'success');
+    } catch (err) {
+      showToast('エラー: ' + err.message, 'error');
+    } finally {
+      setLoading(btn, false);
+    }
+  }
+
+  async function renderArtList() {
+    const el = document.getElementById('art-list');
+    el.innerHTML = '<p style="font-size:13px;color:var(--muted);padding:8px 0">読み込み中...</p>';
+    try {
+      const { articles } = await readArticlesJson();
+      if (!articles.length) {
+        el.innerHTML = '<p style="font-size:13px;color:var(--muted);padding:8px 0">まだ記事がありません</p>';
+        return;
+      }
+      el.innerHTML = articles.map((a, i) => `
+        <div style="display:flex;align-items:flex-start;gap:8px;padding:12px 0;border-bottom:1px solid var(--border)">
+          <div style="flex:1">
+            <span style="font-size:11px;color:var(--muted)">${a.date || ''}</span>
+            <div style="font-size:13px;font-weight:500;color:var(--text);margin-top:2px">${a.title || ''}</div>
+            ${a.photos && a.photos.length ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">写真 ${a.photos.length}枚</div>` : ''}
+          </div>
+          <button onclick="editArticle(${i})"
+            style="background:none;border:1px solid var(--primary);border-radius:6px;padding:4px 10px;font-size:11px;color:var(--primary);cursor:pointer;white-space:nowrap;flex-shrink:0">
+            編集
+          </button>
+          <button onclick="deleteArticle(${i})"
+            style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:11px;color:var(--muted);cursor:pointer;white-space:nowrap;flex-shrink:0">
+            削除
+          </button>
+        </div>
+      `).join('');
+    } catch {
+      el.innerHTML = '<p style="font-size:13px;color:var(--muted);padding:8px 0">（トークン未設定）</p>';
     }
   }
 
